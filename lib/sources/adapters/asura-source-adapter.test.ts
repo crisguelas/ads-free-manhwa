@@ -3,6 +3,10 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ASURA_TEST_UTILS } from "@/lib/sources/adapters/asura-source-adapter";
+import {
+  getSourceMetricSnapshot,
+  recordParserFailure,
+} from "@/lib/sources/adapter-observability";
 
 /**
  * Loads a fixture file used by parser regression tests.
@@ -62,4 +66,15 @@ test("detectAuthGuard flags premium/login prompts", () => {
     ASURA_TEST_UTILS.detectAuthGuard("<div>Normal chapter content</div>"),
     false,
   );
+});
+
+/**
+ * Verifies parser failure counters are tracked for alert-threshold monitoring.
+ */
+test("parser failure metrics increment in observability state", () => {
+  const before = getSourceMetricSnapshot("asura-scans");
+  recordParserFailure("asura-scans", "synthetic parser failure for regression test");
+  const after = getSourceMetricSnapshot("asura-scans");
+
+  assert.equal(after.parserFailures.length, before.parserFailures.length + 1);
 });

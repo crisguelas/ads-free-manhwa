@@ -1,4 +1,8 @@
 import { prisma } from "@/lib/prisma";
+import {
+  recordCacheSyncFallback,
+  recordCacheSyncSuccess,
+} from "@/lib/sources/adapter-observability";
 import { getSourceAdapter } from "@/lib/sources/registry";
 
 const CHAPTER_CACHE_TTL_MS = 1000 * 60 * 30;
@@ -223,6 +227,13 @@ export async function getSeriesDetailData(
       seriesTitle: follow.seriesTitle,
       chapters: liveChapterCandidates,
     });
+    recordCacheSyncSuccess(follow.source.key, seriesSlug, liveChapterCandidates.length);
+  } else if (shouldRefreshFromAdapter && cachedChapters.length > 0) {
+    recordCacheSyncFallback(
+      follow.source.key,
+      seriesSlug,
+      "Live chapter refresh returned empty; serving stale cache.",
+    );
   }
 
   const liveChapters =

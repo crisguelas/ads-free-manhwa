@@ -293,3 +293,31 @@ This file tracks implementation steps so future developers can understand what w
 **Next**
 - Add cache-sync observability counters and alerting thresholds for sustained parser failure rates.
 
+---
+
+### 2026-04-10 - Source observability counters and parser alert thresholds
+
+**Objective**
+- Add lightweight runtime observability for parser reliability and cache-sync behavior before onboarding the second source.
+
+**Changes made**
+- Added `lib/sources/adapter-observability.ts` with in-memory counters for:
+  - parser success/failure tracking
+  - cache-sync success tracking
+  - stale-cache fallback tracking
+- Added parser-failure threshold alerting:
+  - emits an alert log when repeated parser failures hit threshold within a rolling time window
+- Wired observability into Asura adapter (`lib/sources/adapters/asura-source-adapter.ts`):
+  - parser success recorded after valid chapter/image parsing
+  - parser failure recorded for parse-failed and zero-image parsing cases
+- Wired cache-sync observability in `lib/reader-data.ts`:
+  - logs successful adapter-to-cache sync events
+  - logs stale-cache fallback events when live refresh returns no chapters
+- Extended adapter test coverage in `lib/sources/adapters/asura-source-adapter.test.ts` for parser failure metric increments.
+
+**Verification**
+- Executed `npm run test`, `npm run lint`, and `npm run build` after observability wiring.
+
+**Next**
+- Introduce the second live source adapter behind the same observability hooks and hardening checks.
+

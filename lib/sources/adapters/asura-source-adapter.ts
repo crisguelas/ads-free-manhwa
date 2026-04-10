@@ -3,6 +3,10 @@ import type {
   SourceChapterDetail,
   SourceChapterSummary,
 } from "@/lib/sources/types";
+import {
+  recordParserFailure,
+  recordParserSuccess,
+} from "@/lib/sources/adapter-observability";
 
 /**
  * Defines Asura website constants used by adapter requests.
@@ -231,6 +235,9 @@ function logAsuraEvent(event: string, payload: Record<string, unknown>): void {
  */
 function logAsuraError(error: AsuraAdapterError): void {
   console.warn("[asura-adapter] error", error);
+  if (error.code === "parse-failed") {
+    recordParserFailure("asura-scans", error.message);
+  }
 }
 
 /**
@@ -288,6 +295,7 @@ export class AsuraSourceAdapter implements SourceAdapter {
       resolvedSlug,
       chapterCount: chapters.length,
     });
+    recordParserSuccess("asura-scans");
     return chapters;
   }
 
@@ -331,6 +339,11 @@ export class AsuraSourceAdapter implements SourceAdapter {
     const rawTitle = titleMatch?.[1]?.trim() ?? `Chapter ${chapterSlug}`;
     const title = rawTitle.replace(/\s*-\s*(Read Online|Premium)\s*\|.*$/i, "");
     const imageUrls = extractChapterImages(html);
+    if (imageUrls.length === 0) {
+      recordParserFailure("asura-scans", "Chapter image list parsed empty.");
+    } else {
+      recordParserSuccess("asura-scans");
+    }
     logAsuraEvent("chapter_images_detected", {
       seriesSlug,
       chapterSlug,

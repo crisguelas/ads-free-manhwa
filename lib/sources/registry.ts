@@ -4,6 +4,8 @@ import type { SourceAdapter } from "@/lib/sources/types";
 
 /**
  * Builds the default adapter registry for supported source keys.
+ * To add a site: implement `SourceAdapter`, map `Source.key` here, and seed `Source` in Prisma.
+ * See `lib/sources/README.md`.
  */
 function createAdapterRegistry(): Map<string, SourceAdapter> {
   return new Map<string, SourceAdapter>([

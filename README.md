@@ -55,6 +55,12 @@ Out of scope for now:
 5. Integrate scraper adapters for selected scanlation sources.
 6. Add caching only where performance requires it.
 
+### Source integration roadmap
+
+- **Done:** Asura (first live adapter).
+- **Next:** [Flame Comics](https://flamecomics.xyz/) (`flame-scans`) — live scraper implementation queued before UI/UX polish.
+- **Extensibility:** New translator groups are added by creating a `Source` row + a new adapter class + one registry entry; see `lib/sources/README.md`.
+
 ## Possible Future Implementation
 
 - Authentication and access control (simple email + password; no social login).

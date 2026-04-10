@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "tsx --test lib/sources/adapters/asura-source-adapter.test.ts",
+    "test": "tsx --test lib/sources/adapters/asura-source-adapter.test.ts lib/db-connection-string.test.ts",
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {

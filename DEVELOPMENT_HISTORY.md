@@ -321,3 +321,58 @@ This file tracks implementation steps so future developers can understand what w
 **Next**
 - Introduce the second live source adapter behind the same observability hooks and hardening checks.
 
+---
+
+### 2026-04-10 - Postgres SSL connection string normalization
+
+**Objective**
+- Remove noisy `pg` SSL mode deprecation warnings in dev and production when using Neon-style URLs.
+
+**Changes made**
+- Added `lib/db-connection-string.ts` to normalize `DATABASE_URL` to `sslmode=verify-full` when absent or set to legacy aliases (`require`, `prefer`, `verify-ca`).
+- Applied normalization in `lib/prisma.ts` and `prisma/seed.ts` before creating the Prisma Postgres adapter.
+- Updated `.env.example` and added `lib/db-connection-string.test.ts`; extended `npm run test` script.
+
+**Verification**
+- `npm run test` and `npm run lint` passed.
+
+**Next**
+- Optional: document that local `.env` may omit `sslmode` and rely on normalization.
+
+---
+
+### 2026-04-10 - Server / Prisma SSL warnings (full stack fix)
+
+**Objective**
+- Stop `pg` SSL deprecation warnings for Prisma CLI, Next.js dev server, and runtime by normalizing `DATABASE_URL` everywhere it is consumed.
+
+**Changes made**
+- `prisma.config.ts`: datasource URL passed through `normalizePostgresDatabaseUrl()` so `migrate`, `studio`, etc. use `sslmode=verify-full`.
+- `instrumentation.ts`: on Node runtime startup, patch `process.env.DATABASE_URL` before app modules load so dev/prod logs stay clean.
+- Existing `lib/prisma.ts` + `prisma/seed.ts` normalization unchanged.
+
+**Verification**
+- `npm run build`, `npx prisma migrate status`, `npm run lint` passed; CLI no longer prints the SSL warning in local runs.
+
+**Next**
+- Implement Flame Comics live adapter (`flame-scans`) per roadmap.
+
+---
+
+### 2026-04-10 - Flame Comics next source + extensibility documentation
+
+**Objective**
+- Queue [Flame Comics](https://flamecomics.xyz/) as the next live scraper target and document how to plug in future scanlation groups without refactors.
+
+**Changes made**
+- Added `lib/sources/README.md` with adapter checklist, observability/testing notes, and a roadmap table (Asura live, Flame next, Reaper mock).
+- Updated `README.md` with a short source integration roadmap and pointer to the adapter guide.
+- Updated `prisma/seed.ts` Flame `Source` to use `https://flamecomics.xyz/` and display name aligned with the site.
+- Added registry comment in `lib/sources/registry.ts` linking to the adapter guide.
+
+**Verification**
+- Documentation-only change; `npm run lint` recommended before merge.
+
+**Next**
+- Implement `FlameSourceAdapter` for `flame-scans`, then proceed with UI/UX finalization while keeping the registry pattern for additional sources.
+

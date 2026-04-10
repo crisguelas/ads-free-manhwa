@@ -2,6 +2,18 @@
 // npm install --save-dev prisma dotenv
 import "dotenv/config";
 import { defineConfig } from "prisma/config";
+import { normalizePostgresDatabaseUrl } from "./lib/db-connection-string";
+
+/**
+ * Returns datasource URL for Prisma CLI with sslmode normalized for `pg` (no deprecation warnings).
+ */
+function getDatasourceUrl(): string | undefined {
+  const raw = process.env["DATABASE_URL"];
+  if (!raw) {
+    return undefined;
+  }
+  return normalizePostgresDatabaseUrl(raw);
+}
 
 export default defineConfig({
   schema: "prisma/schema.prisma",
@@ -9,6 +21,6 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   datasource: {
-    url: process.env["DATABASE_URL"],
+    url: getDatasourceUrl(),
   },
 });

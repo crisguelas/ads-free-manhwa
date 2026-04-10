@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
+import { normalizePostgresDatabaseUrl } from "../lib/db-connection-string";
 import { PrismaClient } from "../lib/generated/prisma/client";
 
 /**
@@ -9,7 +10,7 @@ import { PrismaClient } from "../lib/generated/prisma/client";
 const SOURCE_SEEDS = [
   { key: "asura-scans", name: "Asura Scans", baseUrl: "https://asuracomic.net" },
   { key: "reaper-scans", name: "Reaper Scans", baseUrl: "https://reaperscans.com" },
-  { key: "flame-scans", name: "Flame Scans", baseUrl: "https://flamecomics.com" },
+  { key: "flame-scans", name: "Flame Comics", baseUrl: "https://flamecomics.xyz/" },
 ] as const;
 
 /**
@@ -23,12 +24,13 @@ function buildDevPasswordHash(value: string): string {
  * Seeds base source rows and development test records for UI/testing.
  */
 async function main(): Promise<void> {
-  const connectionString = process.env.DATABASE_URL;
+  const rawUrl = process.env.DATABASE_URL;
 
-  if (!connectionString) {
+  if (!rawUrl) {
     throw new Error("DATABASE_URL is required to run seed data.");
   }
 
+  const connectionString = normalizePostgresDatabaseUrl(rawUrl);
   const adapter = new PrismaPg({ connectionString });
   const prisma = new PrismaClient({ adapter });
 

@@ -1,0 +1,128 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id             String           @id @default(cuid())
+  email          String           @unique
+  passwordHash   String
+  displayName    String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  bookmarks      Bookmark[]
+  follows        Follow[]
+  readingHistory ReadingHistory[]
+}
+
+model Source {
+  id             String           @id @default(cuid())
+  key            String           @unique
+  name           String
+  baseUrl        String
+  isEnabled      Boolean          @default(true)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  bookmarks      Bookmark[]
+  follows        Follow[]
+  readingHistory ReadingHistory[]
+  seriesCache    SeriesCache[]
+  chapterCache   ChapterCache[]
+}
+
+model Follow {
+  id            String   @id @default(cuid())
+  userId        String
+  sourceId      String
+  seriesSlug    String
+  seriesTitle   String
+  coverImageUrl String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  source        Source   @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, sourceId, seriesSlug])
+  @@index([sourceId, seriesSlug])
+}
+
+model Bookmark {
+  id             String   @id @default(cuid())
+  userId         String
+  sourceId       String
+  seriesSlug     String
+  chapterSlug    String
+  chapterTitle   String?
+  pageNumber     Int?
+  chapterUrl     String?
+  bookmarkedAt   DateTime @default(now())
+  lastAccessedAt DateTime @updatedAt
+  source         Source   @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, sourceId, seriesSlug, chapterSlug])
+  @@index([sourceId, seriesSlug, chapterSlug])
+}
+
+model ReadingHistory {
+  id           String   @id @default(cuid())
+  userId       String
+  sourceId     String
+  seriesSlug   String
+  chapterSlug  String
+  chapterTitle String?
+  chapterUrl   String?
+  pageNumber   Int?
+  lastReadAt   DateTime @default(now())
+  source       Source   @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, sourceId, seriesSlug, chapterSlug])
+  @@index([userId, lastReadAt])
+  @@index([sourceId, seriesSlug, chapterSlug])
+}
+
+model SeriesCache {
+  id            String         @id @default(cuid())
+  sourceId      String
+  seriesSlug    String
+  title         String
+  synopsis      String?
+  coverImageUrl String?
+  status        String?
+  genres        String[]
+  lastSyncedAt  DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  source        Source         @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  chapters      ChapterCache[]
+
+  @@unique([sourceId, seriesSlug])
+  @@index([title])
+}
+
+model ChapterCache {
+  id           String      @id @default(cuid())
+  sourceId     String
+  seriesSlug   String
+  chapterSlug  String
+  title        String
+  chapterUrl   String
+  chapterLabel String?
+  publishedAt  DateTime?
+  lastSyncedAt DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  source       Source      @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  series       SeriesCache @relation(fields: [sourceId, seriesSlug], references: [sourceId, seriesSlug], onDelete: Cascade)
+
+  @@unique([sourceId, seriesSlug, chapterSlug])
+  @@index([sourceId, seriesSlug])
+}

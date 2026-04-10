@@ -346,3 +346,13 @@ export class AsuraSourceAdapter implements SourceAdapter {
     };
   }
 }
+
+/**
+ * Exposes internal parser helpers for regression tests without broad public API changes.
+ */
+export const ASURA_TEST_UTILS = {
+  extractChapterSummaries,
+  extractChapterImages,
+  detectAuthGuard,
+  parseChapterNumber,
+};

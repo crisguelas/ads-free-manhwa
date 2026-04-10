@@ -268,3 +268,28 @@ This file tracks implementation steps so future developers can understand what w
 **Next**
 - Add focused parser regression tests/fixtures for chapter list and chapter image extraction edge cases.
 
+---
+
+### 2026-04-10 - Asura parser regression tests and fixtures
+
+**Objective**
+- Lock down core Asura parsing behavior with repeatable regression coverage before adding another live source.
+
+**Changes made**
+- Added parser fixtures:
+  - `lib/sources/adapters/__fixtures__/asura-chapter-list.fixture.html`
+  - `lib/sources/adapters/__fixtures__/asura-chapter-images.fixture.html`
+- Added adapter regression tests in `lib/sources/adapters/asura-source-adapter.test.ts` covering:
+  - chapter list extraction with fallback selectors + deduplication
+  - image extraction across mixed URL patterns and escaped script content
+  - login/premium guard detection behavior
+- Exposed scoped test helpers via `ASURA_TEST_UTILS` in `lib/sources/adapters/asura-source-adapter.ts`.
+- Added project test command in `package.json`:
+  - `npm run test`
+
+**Verification**
+- Executed test/lint/build checks after adding fixtures and adapter tests.
+
+**Next**
+- Add cache-sync observability counters and alerting thresholds for sustained parser failure rates.
+

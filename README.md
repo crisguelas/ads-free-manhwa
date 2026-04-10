@@ -29,8 +29,10 @@ This app provides a clean reading experience with a premium UI while keeping the
   - Chapter reader page with page navigation
 - Scraper-first data strategy:
   - Fetch chapter/page content from scanlation sources at runtime
+  - Asura Scans is integrated as the first live adapter with chapter/image parsing
   - Avoid full permanent content mirroring in early versions
   - Store app-owned user state in database
+  - Persist lightweight chapter cache and fall back to stale cache when live parsing fails
 - Database schema (initial) for:
   - `User`
   - `Bookmark`

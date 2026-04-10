@@ -134,3 +134,137 @@ This file tracks implementation steps so future developers can understand what w
 **Next**
 - Add seeding (`prisma/seed.ts`) for initial source and development test data.
 
+---
+
+### 2026-04-10 - Seed pipeline and development data
+
+**Objective**
+- Create repeatable seed workflow for local and shared development setup.
+
+**Changes made**
+- Added Prisma seed script configuration in `package.json`:
+  - `npm run seed`
+  - Prisma seed command wiring for CLI usage
+- Added `prisma/seed.ts` with idempotent seed operations.
+- Seeded baseline records for:
+  - `Source` entries (`asura-scans`, `reaper-scans`, `flame-scans`)
+  - Development `User` (`dev@manhwa.local`)
+  - Example `Follow`, `Bookmark`, and `ReadingHistory` rows
+
+**Verification**
+- Seed command execution and lint/build checks to confirm no regressions.
+
+**Next**
+- Start frontend data wiring (server data fetch + initial list/detail reader screens).
+
+---
+
+### 2026-04-10 - Home page data wiring from Prisma
+
+**Objective**
+- Replace the default Next.js landing page with project-specific data-driven UI.
+
+**Changes made**
+- Added `lib/prisma.ts` singleton client setup using Prisma Postgres adapter.
+- Added `lib/home-data.ts` to fetch source, follow, and reading history data.
+- Added `components/source-overview.tsx` for home screen sections.
+- Replaced `app/page.tsx` with a server-rendered home page using live Prisma data.
+
+**Verification**
+- Run seed, lint, and production build to confirm data flow and app health.
+
+**Next**
+- Implement series/chapter list screens and connect source adapters in a controlled way.
+
+---
+
+### 2026-04-10 - Mobile-first detail and reader route scaffolding
+
+**Objective**
+- Implement the next core UX screens with clean mobile-first navigation.
+
+**Changes made**
+- Added dynamic series detail route: `app/manhwa/[id]/page.tsx`.
+- Added dynamic chapter reader route: `app/manhwa/[id]/chapter/[cid]/page.tsx`.
+- Added data service `lib/reader-data.ts` for detail and reader queries.
+- Updated `components/source-overview.tsx` to link into detail/reader routes.
+- Updated app metadata in `app/layout.tsx` with project title/description.
+
+**Verification**
+- Route compilation and lint/build checks to verify new pages and links.
+
+**Next**
+- Start implementing source adapter contracts for selected scanlation websites.
+
+---
+
+### 2026-04-10 - Source adapter contract and registry foundation
+
+**Objective**
+- Add a clean integration layer so real scraping adapters can be plugged in per website later.
+
+**Changes made**
+- Added `lib/sources/types.ts` with adapter contract and result models.
+- Added `lib/sources/adapters/mock-source-adapter.ts` as safe placeholder behavior.
+- Added `lib/sources/registry.ts` to resolve adapters from `Source.key`.
+- Wired adapter metadata into `lib/reader-data.ts` and displayed it in `app/manhwa/[id]/page.tsx`.
+
+**Verification**
+- Lint/build checks after introducing adapter files and data wiring.
+
+**Next**
+- Implement first real source adapter and connect chapter list/detail fetch paths.
+
+---
+
+### 2026-04-10 - First live source integration (Asura Scans)
+
+**Objective**
+- Start real scraper integration using `https://asurascans.com/` as the first source.
+
+**Changes made**
+- Added `lib/sources/adapters/asura-source-adapter.ts` with:
+  - series slug resolution against Asura's hashed comic slugs
+  - live chapter list extraction from comic pages
+  - chapter detail fetch with premium/login fallback handling
+- Switched `asura-scans` in adapter registry to use `AsuraSourceAdapter`.
+- Updated `lib/reader-data.ts`:
+  - detail page now exposes `liveChapters`
+  - reader page now falls back to adapter data when history is missing
+- Updated UI pages:
+  - `app/manhwa/[id]/page.tsx` now shows live chapter links
+  - `app/manhwa/[id]/chapter/[cid]/page.tsx` now shows detected image count
+
+**Verification**
+- Lint/build and route checks after adapter wiring.
+
+**Next**
+- Harden parser selectors and add persistent cache-sync from adapter responses.
+
+---
+
+### 2026-04-10 - Asura hardening: parser resilience + cache fallback
+
+**Objective**
+- Stabilize the first live adapter by improving parser durability and graceful degradation behavior.
+
+**Changes made**
+- Hardened `lib/sources/adapters/asura-source-adapter.ts`:
+  - added slug-resolution TTL caching to reduce homepage scan frequency
+  - added request timeout handling and structured adapter logs
+  - expanded chapter/image extraction selectors with fallback patterns
+  - added normalized adapter error categories for network/auth/not-found/parse failures
+- Improved `lib/reader-data.ts` data flow:
+  - introduced chapter cache freshness checks (TTL-based refresh strategy)
+  - added adapter-to-cache sync pipeline (`SeriesCache` + `ChapterCache` upserts)
+  - added stale cache fallback for detail page chapter list when live adapter fetch returns empty
+  - added cache metadata fallback for reader route when chapter detail fetch fails
+- Updated detail UI label in `app/manhwa/[id]/page.tsx` to show dynamic source name.
+- Updated `README.md` to reflect live Asura adapter and cache fallback strategy.
+
+**Verification**
+- Lint/build validation executed after hardening changes.
+
+**Next**
+- Add focused parser regression tests/fixtures for chapter list and chapter image extraction edge cases.
+

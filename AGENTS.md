@@ -21,7 +21,7 @@ Do not start implementation until this checklist is complete.
 - Data layer: Prisma + PostgreSQL (Neon).
 - Imports: use `@/*` alias where appropriate.
 - Secrets: never hard-code credentials, tokens, or database URLs.
-- UX priority: mobile-first, clean, premium feel, smooth and subtle interactions.
+- UX priority: mobile-first, clean, premium feel, smooth and subtle interactions; browse UI may use scan-site *layout patterns* (lists, sidebars) on a **light** theme — do not copy third-party logos or brand assets.
 
 ## 3) Implementation Rules
 

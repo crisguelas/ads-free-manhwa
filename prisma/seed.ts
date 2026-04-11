@@ -1,7 +1,6 @@
-import { createHash } from "node:crypto";
 import "dotenv/config";
-import { PrismaPg } from "@prisma/adapter-pg";
-import { normalizePostgresDatabaseUrl } from "../lib/db-connection-string";
+import { hashPassword } from "../lib/auth/password";
+import { createPostgresAdapter } from "../lib/prisma-adapter";
 import { PrismaClient } from "../lib/generated/prisma/client";
 
 /**
@@ -9,16 +8,8 @@ import { PrismaClient } from "../lib/generated/prisma/client";
  */
 const SOURCE_SEEDS = [
   { key: "asura-scans", name: "Asura Scans", baseUrl: "https://asuracomic.net" },
-  { key: "reaper-scans", name: "Reaper Scans", baseUrl: "https://reaperscans.com" },
   { key: "flame-scans", name: "Flame Comics", baseUrl: "https://flamecomics.xyz/" },
 ] as const;
-
-/**
- * Creates a deterministic placeholder password hash for local seed users.
- */
-function buildDevPasswordHash(value: string): string {
-  return createHash("sha256").update(value).digest("hex");
-}
 
 /**
  * Seeds base source rows and development test records for UI/testing.
@@ -30,8 +21,7 @@ async function main(): Promise<void> {
     throw new Error("DATABASE_URL is required to run seed data.");
   }
 
-  const connectionString = normalizePostgresDatabaseUrl(rawUrl);
-  const adapter = new PrismaPg({ connectionString });
+  const adapter = createPostgresAdapter(rawUrl);
   const prisma = new PrismaClient({ adapter });
 
   try {
@@ -52,20 +42,33 @@ async function main(): Promise<void> {
       });
     }
 
+    /**
+     * Drops legacy sources no longer supported (Reaper removed; app targets Asura + Flame only).
+     */
+    await prisma.source.deleteMany({
+      where: { key: "reaper-scans" },
+    });
+
+    const devPassword = "dev-password-change-me";
     const devUser = await prisma.user.upsert({
       where: { email: "dev@manhwa.local" },
       update: {
         displayName: "Dev Reader",
+        passwordHash: hashPassword(devPassword),
       },
       create: {
         email: "dev@manhwa.local",
         displayName: "Dev Reader",
-        passwordHash: buildDevPasswordHash("dev-password-change-me"),
+        passwordHash: hashPassword(devPassword),
       },
     });
 
     const asuraSource = await prisma.source.findUniqueOrThrow({
       where: { key: "asura-scans" },
+    });
+
+    const flameSource = await prisma.source.findUniqueOrThrow({
+      where: { key: "flame-scans" },
     });
 
     await prisma.follow.upsert({
@@ -86,6 +89,30 @@ async function main(): Promise<void> {
         seriesSlug: "the-beginning-after-the-end",
         seriesTitle: "The Beginning After the End",
         coverImageUrl: "https://example.com/covers/tbate.jpg",
+      },
+    });
+
+    /**
+     * Flame adapter uses numeric series id as `seriesSlug` (e.g. `2` = Omniscient Reader's Viewpoint).
+     */
+    await prisma.follow.upsert({
+      where: {
+        userId_sourceId_seriesSlug: {
+          userId: devUser.id,
+          sourceId: flameSource.id,
+          seriesSlug: "2",
+        },
+      },
+      update: {
+        seriesTitle: "Omniscient Reader's Viewpoint",
+        coverImageUrl: "https://cdn.flamecomics.xyz/uploads/images/series/2/thumbnail.png",
+      },
+      create: {
+        userId: devUser.id,
+        sourceId: flameSource.id,
+        seriesSlug: "2",
+        seriesTitle: "Omniscient Reader's Viewpoint",
+        coverImageUrl: "https://cdn.flamecomics.xyz/uploads/images/series/2/thumbnail.png",
       },
     });
 

@@ -13,15 +13,28 @@ datasource db {
 }
 
 model User {
-  id             String           @id @default(cuid())
-  email          String           @unique
-  passwordHash   String
-  displayName    String?
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
-  bookmarks      Bookmark[]
-  follows        Follow[]
-  readingHistory ReadingHistory[]
+  id                   String               @id @default(cuid())
+  email                String               @unique
+  passwordHash         String
+  displayName          String?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+  bookmarks            Bookmark[]
+  follows              Follow[]
+  readingHistory       ReadingHistory[]
+  passwordResetTokens  PasswordResetToken[]
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model Source {

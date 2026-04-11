@@ -137,6 +137,41 @@ async function resolveAsuraSeriesSlug(inputSlug: string): Promise<string | null>
 }
 
 /**
+ * Reads Open Graph image URL from a comic series HTML page when Asura exposes it.
+ */
+function extractSeriesOgImage(html: string): string | null {
+  const ordered = html.match(/property="og:image"\s+content="([^"]+)"/i);
+  if (ordered?.[1]) {
+    return ordered[1].trim();
+  }
+  const reversed = html.match(
+    /content="([^"]+)"\s+[^>]*property="og:image"/i,
+  );
+  if (reversed?.[1]) {
+    return reversed[1].trim();
+  }
+  return null;
+}
+
+/**
+ * Resolves the canonical Asura slug, then returns the series cover URL from `og:image` (CDN hotlink).
+ * Does not record parser observability metrics; safe for decorative home-catalog enrichment.
+ */
+export async function fetchAsuraSeriesCoverUrl(
+  seriesSlug: string,
+): Promise<string | null> {
+  const resolved = await resolveAsuraSeriesSlug(seriesSlug);
+  if (!resolved) {
+    return null;
+  }
+  const html = await fetchHtml(`${ASURA_BASE_URL}/comics/${resolved}`);
+  if (!html) {
+    return null;
+  }
+  return extractSeriesOgImage(html);
+}
+
+/**
  * Parses chapter slug into a sortable number.
  */
 function parseChapterNumber(chapterSlug: string): number {
@@ -180,8 +215,8 @@ function extractChapterSummaries(
 
   return chapters.sort(
     (left, right) =>
-      parseChapterNumber(right.chapterLabel ?? right.slug) -
-      parseChapterNumber(left.chapterLabel ?? left.slug),
+      parseChapterNumber(left.chapterLabel ?? left.slug) -
+      parseChapterNumber(right.chapterLabel ?? right.slug),
   );
 }
 
@@ -219,7 +254,14 @@ function extractChapterImages(html: string): string[] {
     }
   }
 
-  return Array.from(urls);
+  return Array.from(urls).sort((a, b) => {
+    const na = Number(a.match(/(\d+)\.(?:jpe?g|png|webp)/i)?.[1] ?? 0);
+    const nb = Number(b.match(/(\d+)\.(?:jpe?g|png|webp)/i)?.[1] ?? 0);
+    if (na > 0 && nb > 0 && na !== nb) {
+      return na - nb;
+    }
+    return a.localeCompare(b);
+  });
 }
 
 /**

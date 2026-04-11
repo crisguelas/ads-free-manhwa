@@ -36,7 +36,7 @@ test("extractChapterSummaries parses unique chapter slugs with fallback links", 
   assert.equal(chapters.length, 4);
   assert.deepEqual(
     chapters.map((chapter) => chapter.slug),
-    ["11", "10.5", "9", "not-a-chapter"],
+    ["not-a-chapter", "9", "10.5", "11"],
   );
 });
 

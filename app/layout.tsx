@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { SiteHeader } from "@/components/site-header";
+import { getSessionUser } from "@/lib/auth/current-user";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -13,21 +15,26 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Personal Manhwa Reader",
-  description: "Ad-free mobile-first manhwa reader for a private group.",
+  title: "Manhwa Cloud",
+  description: "Read manhwa with your library, follows, and synced progress.",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const user = await getSessionUser();
+
   return (
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="flex min-h-full flex-col font-sans text-zinc-900 antialiased">
+        <SiteHeader user={user} />
+        {children}
+      </body>
     </html>
   );
 }

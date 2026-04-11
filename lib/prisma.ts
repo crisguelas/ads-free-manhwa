@@ -1,6 +1,5 @@
 import "dotenv/config";
-import { PrismaPg } from "@prisma/adapter-pg";
-import { normalizePostgresDatabaseUrl } from "@/lib/db-connection-string";
+import { createPostgresAdapter } from "@/lib/prisma-adapter";
 import { PrismaClient } from "./generated/prisma/client";
 
 /**
@@ -13,8 +12,7 @@ function createPrismaClient(): PrismaClient {
     throw new Error("DATABASE_URL is required for Prisma client initialization.");
   }
 
-  const connectionString = normalizePostgresDatabaseUrl(rawUrl);
-  const adapter = new PrismaPg({ connectionString });
+  const adapter = createPostgresAdapter(rawUrl);
   return new PrismaClient({ adapter });
 }
 

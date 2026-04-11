@@ -14,12 +14,15 @@ Each scanlation site is integrated behind a single `SourceAdapter` implementatio
 
 Mock adapters (`mock-source-adapter.ts`) remain valid placeholders until a site is implemented.
 
-## Roadmap (live scrapers)
+## Supported scanlation targets (current)
+
+Only **Asura** and **Flame** are in scope for scraping and UI. Additional sites can be added later via the checklist above.
 
 | Priority | `Source.key` | Site | Status |
 |----------|----------------|------|--------|
 | 1 | `asura-scans` | Asura | Live adapter |
-| 2 | `flame-scans` | [Flame Comics](https://flamecomics.xyz/) | **Next implementation** |
-| — | `reaper-scans` | Reaper | Mock until prioritized |
+| 2 | `flame-scans` | [Flame Comics](https://flamecomics.xyz/) | Live adapter |
+
+**Flame `seriesSlug` convention:** use the numeric series id from the URL `/series/{id}` (e.g. `2` for Omniscient Reader's Viewpoint). Chapter slugs are the 16-character hex token in `/series/{id}/{token}`.
 
 After Flame is stable, additional groups only need a new `Source` row + adapter + registry entry—no core app refactor.

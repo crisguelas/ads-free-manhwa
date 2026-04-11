@@ -1,12 +1,26 @@
 /**
- * Normalizes a Postgres connection URL so `pg` uses an explicit `sslmode=verify-full`.
- * This matches current driver behavior for `require`/`prefer`/`verify-ca` and silences
- * the Node warning about future libpq-compatible semantics (pg-connection-string v3+).
+ * Normalizes a Postgres connection URL so `pg` uses an explicit `sslmode`.
+ * Default: upgrade legacy modes to `verify-full` (Neon-friendly, silences pg sslmode deprecation noise).
+ * When `DATABASE_PG_SSL=compat` is set, keeps or sets `sslmode=require` instead — helps environments
+ * where TLS handshakes fail with `verify-full` (e.g. some Windows / proxy setups).
  */
 export function normalizePostgresDatabaseUrl(connectionString: string): string {
   try {
     const url = new URL(connectionString);
     const sslMode = url.searchParams.get("sslmode");
+
+    if (process.env.DATABASE_PG_SSL === "compat") {
+      if (
+        !sslMode ||
+        sslMode === "prefer" ||
+        sslMode === "verify-full" ||
+        sslMode === "verify-ca"
+      ) {
+        url.searchParams.set("sslmode", "require");
+      }
+      return url.toString();
+    }
+
     if (
       !sslMode ||
       sslMode === "require" ||

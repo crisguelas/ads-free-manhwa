@@ -1,5 +1,5 @@
 import { AsuraSourceAdapter } from "@/lib/sources/adapters/asura-source-adapter";
-import { MockSourceAdapter } from "@/lib/sources/adapters/mock-source-adapter";
+import { FlameSourceAdapter } from "@/lib/sources/adapters/flame-source-adapter";
 import type { SourceAdapter } from "@/lib/sources/types";
 
 /**
@@ -14,12 +14,8 @@ function createAdapterRegistry(): Map<string, SourceAdapter> {
       new AsuraSourceAdapter(),
     ],
     [
-      "reaper-scans",
-      new MockSourceAdapter("reaper-scans", "Reaper Scans Adapter"),
-    ],
-    [
       "flame-scans",
-      new MockSourceAdapter("flame-scans", "Flame Scans Adapter"),
+      new FlameSourceAdapter(),
     ],
   ]);
 }

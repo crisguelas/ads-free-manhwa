@@ -1,26 +1,18 @@
-import { SourceOverview } from "@/components/source-overview";
+import { HomeBrowse } from "@/components/home-browse";
 import { getHomePageData } from "@/lib/home-data";
 
-/**
- * Renders the home page with live database-backed overview data.
- */
-export default async function Home() {
-  const data = await getHomePageData();
+type HomePageProps = {
+  searchParams?: Promise<{ source?: string }>;
+};
 
-  return (
-    <div className="flex flex-col flex-1 bg-zinc-50">
-      <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-8 px-5 py-10 sm:px-8">
-        <header className="space-y-2">
-          <h1 className="text-3xl font-semibold tracking-tight text-zinc-900">
-            Personal Manhwa Reader
-          </h1>
-          <p className="text-sm text-zinc-600">
-            Scraper-first architecture: source targets can be finalized later.
-            Current view is driven by seeded Prisma data in Neon.
-          </p>
-        </header>
-        <SourceOverview data={data} />
-      </main>
-    </div>
-  );
+/**
+ * Renders the home page with scan-style browse UI; `?source=asura-scans` or `flame-scans` filters the catalog.
+ */
+export default async function Home({ searchParams }: HomePageProps) {
+  const data = await getHomePageData();
+  const sp = searchParams ? await searchParams : {};
+  const sourceFilter =
+    typeof sp.source === "string" && sp.source.length > 0 ? sp.source : null;
+
+  return <HomeBrowse data={data} sourceFilter={sourceFilter} />;
 }

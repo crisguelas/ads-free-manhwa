@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { hashPassword } from "../lib/auth/password";
+import { normalizeFollowSeriesTitleForStorage } from "../lib/follow-series-title";
 import { createPostgresAdapter } from "../lib/prisma-adapter";
 import { PrismaClient } from "../lib/generated/prisma/client";
 
@@ -80,14 +81,14 @@ async function main(): Promise<void> {
         },
       },
       update: {
-        seriesTitle: "The Beginning After the End",
+        seriesTitle: normalizeFollowSeriesTitleForStorage("The Beginning After the End"),
         coverImageUrl: "https://example.com/covers/tbate.jpg",
       },
       create: {
         userId: devUser.id,
         sourceId: asuraSource.id,
         seriesSlug: "the-beginning-after-the-end",
-        seriesTitle: "The Beginning After the End",
+        seriesTitle: normalizeFollowSeriesTitleForStorage("The Beginning After the End"),
         coverImageUrl: "https://example.com/covers/tbate.jpg",
       },
     });
@@ -104,14 +105,14 @@ async function main(): Promise<void> {
         },
       },
       update: {
-        seriesTitle: "Omniscient Reader's Viewpoint",
+        seriesTitle: normalizeFollowSeriesTitleForStorage("Omniscient Reader's Viewpoint"),
         coverImageUrl: "https://cdn.flamecomics.xyz/uploads/images/series/2/thumbnail.png",
       },
       create: {
         userId: devUser.id,
         sourceId: flameSource.id,
         seriesSlug: "2",
-        seriesTitle: "Omniscient Reader's Viewpoint",
+        seriesTitle: normalizeFollowSeriesTitleForStorage("Omniscient Reader's Viewpoint"),
         coverImageUrl: "https://cdn.flamecomics.xyz/uploads/images/series/2/thumbnail.png",
       },
     });

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { HomePageData } from "@/lib/home-data";
+import { displaySeriesTitleForContinueCard } from "@/lib/continue-reading-display";
 import { cardElevated, textLink } from "@/lib/ui-styles";
 
 /**
@@ -49,43 +50,26 @@ export function SourceOverview({ data }: SourceOverviewProps) {
 
       <section className={`${cardElevated} flex flex-col`}>
         <div>
-          <p className={sectionEyebrow}>Library</p>
-          <h2 className={sectionTitle}>Your follows</h2>
-          <p className="mt-1 text-sm text-zinc-500">Series you are tracking.</p>
+          <p className={sectionEyebrow}>Saved</p>
+          <h2 className={sectionTitle}>Bookmarks</h2>
+          <p className="mt-1 text-sm text-zinc-500">Chapters you bookmark in the reader appear on the Bookmarks page.</p>
         </div>
         <ul className="mt-5 space-y-2">
-          {data.currentUserEmail === null ? (
-            <li className="rounded-xl border border-dashed border-zinc-200 bg-zinc-50/30 px-3.5 py-4 text-sm leading-relaxed text-zinc-600">
-              <Link href="/login" className={textLink}>
-                Log in
-              </Link>{" "}
-              to see your library, or{" "}
-              <Link href="/register" className={textLink}>
-                register
-              </Link>{" "}
-              for an account.
-            </li>
-          ) : data.follows.length === 0 ? (
-            <li className="rounded-xl border border-dashed border-zinc-200 bg-zinc-50/30 px-3.5 py-4 text-sm text-zinc-500">
-              No followed series yet. Follows appear here once you add them.
-            </li>
-          ) : (
-            data.follows.map((entry) => (
-              <li key={entry.id} className={listRow}>
-                <div className="min-w-0">
-                  <Link
-                    className="block truncate font-medium text-zinc-900 transition hover:text-indigo-700"
-                    href={`/manhwa/${entry.seriesSlug}`}
-                  >
-                    {entry.seriesTitle}
-                  </Link>
-                  <p className="truncate text-xs text-zinc-500">
-                    {entry.sourceName} · {entry.seriesSlug}
-                  </p>
-                </div>
-              </li>
-            ))
-          )}
+          <li className="rounded-xl border border-dashed border-zinc-200 bg-zinc-50/30 px-3.5 py-4 text-sm leading-relaxed text-zinc-600">
+            <Link href="/bookmarks" className={textLink}>
+              Open bookmarks
+            </Link>
+            {data.currentUserEmail === null ? (
+              <>
+                {" "}
+                —{" "}
+                <Link href="/login" className={textLink}>
+                  sign in
+                </Link>{" "}
+                first.
+              </>
+            ) : null}
+          </li>
         </ul>
       </section>
 
@@ -105,21 +89,28 @@ export function SourceOverview({ data }: SourceOverviewProps) {
               No reading history yet. Open a chapter to see it listed here.
             </li>
           ) : (
-            data.recentReads.map((entry) => (
-              <li key={entry.id} className={listRow}>
-                <div className="min-w-0">
-                  <Link
-                    className="block truncate font-medium text-zinc-900 transition hover:text-indigo-700"
-                    href={`/manhwa/${entry.seriesSlug}/chapter/${entry.chapterSlug}`}
-                  >
-                    {entry.chapterTitle ?? entry.chapterSlug}
-                  </Link>
-                  <p className="truncate text-xs text-zinc-500">
-                    {entry.sourceName} · {entry.seriesSlug}
-                  </p>
-                </div>
-              </li>
-            ))
+            data.recentReads.map((entry) => {
+              const seriesLine = displaySeriesTitleForContinueCard(
+                entry.seriesTitle,
+                entry.sourceKey,
+                entry.seriesSlug,
+              );
+              return (
+                <li key={entry.id} className={listRow}>
+                  <div className="min-w-0">
+                    <Link
+                      className="block truncate font-medium text-zinc-900 transition hover:text-indigo-700"
+                      href={`/manhwa/${entry.seriesSlug}/chapter/${entry.chapterSlug}`}
+                    >
+                      {seriesLine}
+                    </Link>
+                    <p className="truncate text-xs text-zinc-500">
+                      {entry.sourceName} · {entry.chapterTitle ?? entry.chapterSlug}
+                    </p>
+                  </div>
+                </li>
+              );
+            })
           )}
         </ul>
       </section>

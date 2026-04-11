@@ -21,12 +21,12 @@ export type ReadingProgressSync = {
 };
 
 /**
- * Props for the vertical chapter reader: remote page URLs, resume position, and fallbacks.
+ * Props for the vertical chapter reader: remote image URLs in one continuous scroll strip.
  */
 export type ChapterReaderViewProps = {
-  /** Ordered list of full image URLs for this chapter. */
+  /** Ordered list of full image URLs for this chapter (rendered top-to-bottom in a single column). */
   imageUrls: string[];
-  /** 1-based page index to scroll to on first mount (from reading history). */
+  /** 1-based image index to scroll to on first mount (from reading history). */
   initialPage: number;
   /** Short label for image alt text (chapter title or slug). */
   chapterLabel: string;
@@ -35,13 +35,13 @@ export type ChapterReaderViewProps = {
   /** Canonical chapter URL on the source site when pages fail to load. */
   chapterUrl: string | null;
   /**
-   * When set, visible page index is saved (debounced) to the database for the configured progress user.
+   * When set, visible image index is saved (debounced) to the database for the configured progress user.
    */
   progressSync?: ReadingProgressSync | null;
 };
 
 /**
- * Tracks which reader page is most visible in the viewport so the footer counter matches what the user is reading.
+ * Tracks which reader image is most visible in the viewport so progress sync matches what the user is reading.
  */
 function useVisiblePageIndex(
   imageCount: number,
@@ -91,7 +91,7 @@ function useVisiblePageIndex(
       },
       {
         root: null,
-        rootMargin: "-12% 0px -40% 0px",
+        rootMargin: "-10% 0px -38% 0px",
         threshold: [0, 0.1, 0.25, 0.5, 0.75, 1],
       },
     );
@@ -106,10 +106,43 @@ function useVisiblePageIndex(
   return page;
 }
 
+/**
+ * 0–1 scroll depth through the document (updates on scroll, resize, and lazy image loads).
+ */
+function useDocumentScrollProgress(imageUrlCount: number): number {
+  const [progress, setProgress] = useState(0);
+
+  const recalc = useCallback(() => {
+    const el = document.documentElement;
+    const max = el.scrollHeight - el.clientHeight;
+    if (max <= 0) {
+      setProgress(1);
+      return;
+    }
+    setProgress(Math.min(1, Math.max(0, el.scrollTop / max)));
+  }, []);
+
+  useEffect(() => {
+    let raf = 0;
+    raf = requestAnimationFrame(() => {
+      recalc();
+    });
+    window.addEventListener("scroll", recalc, { passive: true });
+    window.addEventListener("resize", recalc);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("scroll", recalc);
+      window.removeEventListener("resize", recalc);
+    };
+  }, [recalc, imageUrlCount]);
+
+  return progress;
+}
+
 const READING_PROGRESS_DEBOUNCE_MS = 1200;
 
 /**
- * Persists the latest visible page via debounced `fetch` and `sendBeacon` when the tab hides (until auth owns the user id).
+ * Persists the latest visible image index via debounced `fetch` and `sendBeacon` when the tab hides.
  */
 function usePersistReadingProgress(
   progressSync: ReadingProgressSync | null | undefined,
@@ -223,8 +256,10 @@ function usePersistReadingProgress(
   }, [visiblePage, progressSync, imageCount]);
 }
 
+const EAGER_IMAGE_COUNT = 5;
+
 /**
- * Renders a mobile-first vertical manhwa reader: full-width images, lazy loading, resume scroll, and a sticky page counter.
+ * Renders all chapter images in one vertical scroll strip (webtoon-style), with scroll progress and resume sync.
  */
 export function ChapterReaderView({
   imageUrls,
@@ -247,6 +282,13 @@ export function ChapterReaderView({
 
   usePersistReadingProgress(progressSync, visiblePage, imageUrls.length);
 
+  const scrollProgress = useDocumentScrollProgress(imageUrls.length);
+
+  /** Lazy-loaded images change document height; nudge scroll-progress listeners. */
+  const onImageLoad = useCallback(() => {
+    window.dispatchEvent(new Event("resize"));
+  }, []);
+
   const scrollToInitialPage = useCallback(() => {
     if (imageUrls.length === 0) {
       return;
@@ -259,12 +301,15 @@ export function ChapterReaderView({
     scrollToInitialPage();
   }, [scrollToInitialPage]);
 
+  const scrollToTopSmooth = useCallback(() => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, []);
+
   if (imageUrls.length === 0) {
     return (
-      <section className="rounded-2xl border border-zinc-200/90 bg-white p-5 shadow-sm">
-        <p className="text-sm text-zinc-600">
-          No pages could be loaded for this chapter. The source layout may have
-          changed, or the chapter is unavailable.
+      <section className="rounded-2xl border border-zinc-700/80 bg-zinc-900/90 p-6 shadow-lg shadow-black/30">
+        <p className="text-sm leading-relaxed text-zinc-300">
+          No images could be loaded for this chapter. The source may have changed or the chapter is unavailable.
         </p>
         {chapterUrl ? (
           <p className="mt-4 text-sm">
@@ -272,7 +317,7 @@ export function ChapterReaderView({
               href={chapterUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="font-semibold text-orange-700 underline-offset-2 hover:underline"
+              className="font-semibold text-violet-400 underline-offset-2 hover:text-violet-300 hover:underline"
             >
               Open on {sourceName}
             </a>
@@ -282,14 +327,33 @@ export function ChapterReaderView({
     );
   }
 
+  const total = imageUrls.length;
+  const counterLabel =
+    total === 1 ? "Single image in this chapter" : `Image ${visiblePage} of ${total}`;
+
   return (
     <>
+      {/* Scroll depth through the whole chapter (all images load in one long strip). */}
+      <div
+        className="pointer-events-none fixed left-0 right-0 top-0 z-[60] h-1 bg-zinc-800"
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(scrollProgress * 100)}
+        aria-label="Scroll progress through this chapter"
+      >
+        <div
+          className="h-full bg-violet-500 transition-[width] duration-150 ease-out"
+          style={{ width: `${scrollProgress * 100}%` }}
+        />
+      </div>
+
       <section
         ref={pagesRef}
-        className="rounded-2xl border border-zinc-200/90 bg-white shadow-sm shadow-zinc-900/[0.04]"
-        aria-label="Chapter pages"
+        className="w-full"
+        aria-label="Chapter images, one continuous vertical strip"
       >
-        <div className="flex flex-col">
+        <div className="flex flex-col overflow-hidden rounded-xl bg-zinc-950 shadow-xl shadow-black/40 ring-1 ring-zinc-700/80">
           {imageUrls.map((url, index) => {
             const pageNum = index + 1;
             return (
@@ -297,16 +361,17 @@ export function ChapterReaderView({
                 key={`${url}-${index}`}
                 id={`reader-page-${pageNum}`}
                 data-reader-page={String(pageNum)}
-                className="m-0 w-full scroll-mt-24"
+                className="m-0 w-full scroll-mt-32 border-b border-zinc-800/90 last:border-b-0"
               >
                 {/* eslint-disable-next-line @next/next/no-img-element -- remote scanlation CDNs vary; native img avoids brittle remotePatterns. */}
                 <img
                   src={url}
-                  alt={`${chapterLabel} — page ${pageNum}`}
-                  className="block w-full max-w-full bg-white object-contain"
-                  loading={pageNum <= 2 ? "eager" : "lazy"}
+                  alt={`${chapterLabel} — image ${pageNum} of ${total}`}
+                  className="block w-full max-w-full bg-black object-contain"
+                  loading={pageNum <= EAGER_IMAGE_COUNT ? "eager" : "lazy"}
                   decoding="async"
                   referrerPolicy="no-referrer"
+                  onLoad={onImageLoad}
                 />
               </figure>
             );
@@ -314,12 +379,28 @@ export function ChapterReaderView({
         </div>
       </section>
 
+      {scrollProgress > 0.06 ? (
+        <button
+          type="button"
+          onClick={scrollToTopSmooth}
+          className="fixed bottom-[calc(4.35rem+env(safe-area-inset-bottom))] left-3 z-[55] flex h-11 w-11 items-center justify-center rounded-full border border-zinc-600/90 bg-zinc-900/95 text-zinc-100 shadow-lg shadow-black/40 backdrop-blur-md transition hover:border-violet-500/60 hover:bg-zinc-800 hover:text-white focus-visible:outline focus-visible:ring-2 focus-visible:ring-violet-500 sm:bottom-[calc(4.6rem+env(safe-area-inset-bottom))] sm:left-4"
+          aria-label="Back to top"
+        >
+          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2} aria-hidden>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+          </svg>
+        </button>
+      ) : null}
+
       <div
-        className="pointer-events-none sticky bottom-0 z-10 -mx-1 flex justify-center pb-1 pt-2"
+        className="pointer-events-none fixed bottom-[calc(4.25rem+env(safe-area-inset-bottom))] left-0 right-0 z-50 flex justify-center px-4 sm:bottom-[calc(4.5rem+env(safe-area-inset-bottom))]"
         aria-live="polite"
       >
-        <div className="pointer-events-auto rounded-full border border-zinc-200/90 bg-white/95 px-4 py-1.5 text-xs font-semibold text-zinc-700 shadow-lg backdrop-blur-sm">
-          Page {visiblePage} / {imageUrls.length}
+        <div className="pointer-events-auto max-w-sm rounded-2xl border border-zinc-600/80 bg-zinc-900/95 px-3 py-2 text-center shadow-lg shadow-black/40 backdrop-blur-md">
+          <p className="text-[11px] font-semibold leading-tight text-zinc-100">{counterLabel}</p>
+          <p className="mt-0.5 text-[10px] leading-snug text-zinc-400">
+            One vertical strip — resume is stored as image {visiblePage} of {total}
+          </p>
         </div>
       </div>
     </>

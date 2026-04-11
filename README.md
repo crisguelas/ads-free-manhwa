@@ -17,22 +17,23 @@ This app provides a clean reading experience with a premium UI while keeping the
 ## Design Direction
 
 - Mobile-first layout
-- **Premium white chrome:** light gray canvas (`--browse-canvas`), white cards, high-contrast type
-- **Scan-site information architecture** (Asura-inspired): spotlight carousel, dense “latest” lists per source, poster grid, ranked sidebar — without cloning third-party branding
-- Warm **orange / amber** accents for labels, filters, and focus rings (distinct from scan sites’ dark themes)
+- **Premium white chrome:** near-white canvas (`--browse-canvas`), white cards, high-contrast type, subtle shadows
+- **Scan-site information architecture** (Asura-inspired): two-column “latest” list with pagination, poster grid, popular sidebar with period tabs — without cloning third-party logos or branding
+- **Violet** accent on the top bar and primary nav CTAs (light-theme nod to portal layouts); **orange / amber** for star ratings and warm secondary emphasis
 - Smooth, subtle hover and border transitions; reader uses the same light shell as the rest of the app
 
 ## Current Scope
 
 - Core reading flow:
-  - Home page with Asura + Flame browse UI, optional filter `/?source=asura-scans` or `/?source=flame-scans`
-  - Manhwa detail page with chapter list (works for home catalog titles without a `Follow` row; follows still preferred for library metadata)
+  - Home page with separate live “latest updates” panels for Asura and Flame (cached ~30 minutes), source shortcuts, and continue-reading when signed in; full per-source grids and pagination at `/browse/asura-scans` and `/browse/flame-scans` (20 series per page; lists from each site’s live browse index ~1 hour, merged with curated highlights so delisted titles can still appear)
+  - Bookmarks page at `/bookmarks` (signed-in); series pages can bookmark the first chapter via `POST /api/bookmarks` (`seriesSlug`, `chapterSlug`, optional `chapterTitle`) and remove with `DELETE /api/bookmarks?id=…`
+  - Manhwa detail page with chapter list (opens for any series slug on the live Asura/Flame browse index or curated highlights, without a `Follow` row; follows still preferred for library metadata)
   - Chapter reader page with vertical page images (adapter URLs), resume scroll, prev/next chapter links, and server-persisted page progress (`ReadingHistory` for the signed-in user); add `?start=1` on a chapter URL to reopen from page 1
   - Email + password accounts with HttpOnly session cookie (`AUTH_SECRET`); library, history, and reader routes require login
-- Home catalog covers: `lib/catalog-covers.ts` prefers live `og:image` from Asura/Flame series pages (cached); `lib/featured-series.ts` holds fallbacks; `RemoteCoverImage` swaps broken URLs for a placeholder.
+- Home catalog covers: `lib/catalog-covers.ts` prefers live `og:image` from Asura/Flame series pages (cached); `lib/featured-series.ts` holds fallbacks; `RemoteCoverImage` swaps broken URLs for a placeholder. Continue reading uses the same `resolveSeriesCoverUrl` path when the user has no matching library row or `Follow.coverImageUrl` is empty.
 - Scraper-first data strategy:
   - Fetch chapter/page content from scanlation sources at runtime
-  - **Asura** and **Flame Comics** only (no other sources in UI or seed)
+  - **Asura** and **Flame Comics** only (no other sources in UI or seed). **Browse / home “latest”** lists are filtered to **manhwa, manga, manhua, and webtoon**: Flame uses each row’s `type` from browse JSON (and omits web-novel `novel_id` entries); Asura walks every `/browse?page=` until a page has no series cards (the site’s pagination links only show a small window, so the scraper cannot rely on the first page’s nav). Asura resolves the format pill on each `/comics/{slug}` page during the cached scrape (parallel fetches). Numeric Flame URLs stay `/manhwa/{id}`.
   - Asura and Flame Comics live adapters (chapter lists + reader image extraction)
   - Avoid full permanent content mirroring in early versions
   - Store app-owned user state in database
@@ -109,6 +110,19 @@ npm run dev
 
 5. Open [http://localhost:3000](http://localhost:3000).
 
+## Deploying on Vercel (GitHub)
+
+1. Push this repo to GitHub and import the project in [Vercel](https://vercel.com); use the default **Next.js** preset (build: `next build`, output: Next.js).
+2. **Environment variables** (Project → Settings → Environment Variables), at minimum for Production (and Preview if you use a real DB there):
+   - `DATABASE_URL` — use your **Neon** (or other Postgres) connection string. For serverless, prefer the **pooled** / transaction-pooler URL Neon documents for Vercel.
+   - `AUTH_SECRET` — long random string (same rules as local `.env`).
+   - Optional: `APP_BASE_URL` — canonical site URL (password-reset links); Vercel sets `VERCEL_URL` but explicit base URL avoids proxy/path issues.
+   - Optional: `DATABASE_PG_SSL=compat` — only if you hit TLS handshake errors against your host (see Database / TLS notes below).
+   - Optional: `SKIP_FOLLOW_TITLE_BACKFILL=1` — disables the automatic follow-title normalization on server startup.
+3. **Database schema:** run migrations against the **same** database Vercel uses, e.g. from your machine: `npx prisma migrate deploy` with `DATABASE_URL` pointing at production (or use Neon’s migration workflow). The Vercel build does **not** run migrations by default.
+4. **Prisma client:** `npm run build` runs `postinstall` → `prisma generate`, so the generated client is present on Vercel without extra config.
+5. **Runtime:** routes use the **Node.js** runtime (Prisma + `pg`). `instrumentation.ts` runs on production Node startup (follow-title backfill + URL normalization); failures are logged and do not block the app.
+
 ## Development Commands
 
 - `npm run dev` - start dev server
@@ -116,7 +130,13 @@ npm run dev
 - `npm run test` - unit tests (parsers, auth token helpers, reading-progress validation)
 - `npm run test:integration` - DB integration tests (requires `DATABASE_URL`, e.g. password reset flow)
 - `npm run build` - build for production
+- `npm run backfill:follow-titles` - manual run of `Follow.seriesTitle` HTML-entity normalization (same logic as production startup; requires `DATABASE_URL`)
+- `npm run cleanup:flame-novel-reading-history` - deletes legacy `ReadingHistory` rows for Flame web-novel slugs (`novel-{id}`) only; safe to re-run (requires `DATABASE_URL`)
 - `npx prisma studio` - inspect database records
+
+### Production: follow title backfill
+
+In production (`NODE_ENV=production`), the Node server runs an **idempotent** HTML-entity normalization pass on `Follow.seriesTitle` when the process starts (`instrumentation.ts`). A PostgreSQL **transaction advisory lock** prevents duplicate work if several instances boot at once. Failures are logged and do not crash the app. To disable, set `SKIP_FOLLOW_TITLE_BACKFILL=1` in the host environment. Local `npm run dev` does **not** run this; use `npm run backfill:follow-titles` against your local DB if needed.
 
 ### Password reset
 

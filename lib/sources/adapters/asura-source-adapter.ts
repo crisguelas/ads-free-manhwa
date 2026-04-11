@@ -1,3 +1,4 @@
+import { decodeBasicHtmlEntities } from "@/lib/html-entities";
 import type {
   SourceAdapter,
   SourceChapterDetail,
@@ -90,8 +91,9 @@ async function fetchHtml(url: string): Promise<string> {
 
 /**
  * Resolves a raw input slug to Asura's current slug format with hash suffix.
+ * Exported for series synopsis and other metadata fetches that share the same URL rules.
  */
-async function resolveAsuraSeriesSlug(inputSlug: string): Promise<string | null> {
+export async function resolveAsuraSeriesSlug(inputSlug: string): Promise<string | null> {
   const normalizedInput = normalizeSlug(inputSlug);
   const cached = slugResolutionCache.get(normalizedInput);
   const now = Date.now();
@@ -379,7 +381,9 @@ export class AsuraSourceAdapter implements SourceAdapter {
 
     const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
     const rawTitle = titleMatch?.[1]?.trim() ?? `Chapter ${chapterSlug}`;
-    const title = rawTitle.replace(/\s*-\s*(Read Online|Premium)\s*\|.*$/i, "");
+    const title = decodeBasicHtmlEntities(
+      rawTitle.replace(/\s*-\s*(Read Online|Premium)\s*\|.*$/i, ""),
+    );
     const imageUrls = extractChapterImages(html);
     if (imageUrls.length === 0) {
       recordParserFailure("asura-scans", "Chapter image list parsed empty.");

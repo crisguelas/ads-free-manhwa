@@ -1,10 +1,10 @@
 @import "tailwindcss";
 
 :root {
-  --background: #fafafa;
+  --background: #ffffff;
   --foreground: #18181b;
-  /** Slightly cooler off-white behind scan-style browse sections (cards stay pure white). */
-  --browse-canvas: #f4f4f5;
+  /** Cool off-white page canvas; cards stay pure white for scan-portal contrast. */
+  --browse-canvas: #f3f4f6;
 }
 
 @theme inline {

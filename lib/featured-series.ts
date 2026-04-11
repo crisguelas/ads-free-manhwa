@@ -1,7 +1,7 @@
 /**
  * Curated series entry points for the home browse UI.
  * These are links into your reader (`/manhwa/[slug]`) — not rows loaded from the database.
- * Edit this list to change Featured / browse grids on the home page.
+ * Edit this list for fallbacks and `/browse` merge supplements; the home dashboard uses live per-source latest lists.
  */
 export type CatalogHighlight = {
   id: string;

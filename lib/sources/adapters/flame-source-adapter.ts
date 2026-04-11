@@ -1,3 +1,8 @@
+import {
+  type ParsedFlameSeriesSlug,
+  parseFlameSeriesSlug,
+} from "@/lib/flame-series-slug";
+import { decodeBasicHtmlEntities } from "@/lib/html-entities";
 import type {
   SourceAdapter,
   SourceChapterDetail,
@@ -24,13 +29,16 @@ const REQUEST_TIMEOUT_MS = 10000;
  * Describes JSON shape under `props.pageProps.chapter` in Flame chapter pages.
  */
 type FlameNextChapterPayload = {
-  series_id: number;
+  series_id?: number;
+  novel_id?: number;
   token: string;
   chapter_title?: string;
   title?: string;
   release_date?: number;
   unix_timestamp?: number;
   images?: Record<string, { name: string }>;
+  /** Web-novel chapters embed HTML with optional inline images instead of `images`. */
+  content?: string;
 };
 
 /**
@@ -75,21 +83,6 @@ async function fetchHtml(url: string): Promise<string> {
 }
 
 /**
- * Parses Flame `seriesSlug`: must be the numeric series id (e.g. `"2"` for ORV).
- */
-function parseFlameSeriesId(seriesSlug: string): string | null {
-  const trimmed = seriesSlug.trim();
-  if (/^\d+$/.test(trimmed)) {
-    return trimmed;
-  }
-  const seriesPath = trimmed.match(/^series\/(\d+)$/i);
-  if (seriesPath?.[1]) {
-    return seriesPath[1];
-  }
-  return null;
-}
-
-/**
  * Parses a numeric chapter order from Flame link text (e.g. "Chapter 306 - Part 8").
  */
 function parseChapterOrderFromTitle(title: string): number {
@@ -102,34 +95,111 @@ function parseChapterOrderFromTitle(title: string): number {
 }
 
 /**
- * Extracts chapter rows from series page HTML (full chapter URLs and anchor titles).
+ * One row from `props.pageProps.chapters` on Flame series/novel overview pages (authoritative titles).
+ */
+type FlameSeriesNextDataChapter = {
+  token?: string;
+  title?: string;
+  chapter?: string;
+  series_id?: number;
+  novel_id?: number;
+};
+
+/**
+ * Prefers embedded `__NEXT_DATA__.props.pageProps.chapters` so list rows show real chapter titles instead of `Chapter {hex}` when anchors are empty.
+ */
+function parseFlameSeriesChaptersFromNextData(
+  html: string,
+  parsed: ParsedFlameSeriesSlug,
+): SourceChapterSummary[] | null {
+  const match = html.match(
+    /<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/,
+  );
+  if (!match?.[1]) {
+    return null;
+  }
+  let data: {
+    props?: { pageProps?: { chapters?: FlameSeriesNextDataChapter[] } };
+  };
+  try {
+    data = JSON.parse(match[1]);
+  } catch {
+    return null;
+  }
+  const chapters = data.props?.pageProps?.chapters;
+  if (!Array.isArray(chapters) || chapters.length === 0) {
+    return null;
+  }
+  const out: SourceChapterSummary[] = [];
+  for (const c of chapters) {
+    const token =
+      typeof c.token === "string" ? c.token.trim().toLowerCase() : "";
+    if (!/^[a-f0-9]{16}$/.test(token)) {
+      continue;
+    }
+    if (parsed.contentKind === "series") {
+      if (c.series_id != null && String(c.series_id) !== parsed.numericId) {
+        continue;
+      }
+    } else if (c.novel_id != null && String(c.novel_id) !== parsed.numericId) {
+      continue;
+    }
+    let title: string;
+    if (typeof c.title === "string" && c.title.trim().length > 0) {
+      title = decodeBasicHtmlEntities(c.title.trim());
+    } else if (typeof c.chapter === "string" && c.chapter.trim().length > 0) {
+      title = `Chapter ${c.chapter.trim()}`;
+    } else {
+      title = `Chapter ${token}`;
+    }
+    out.push({
+      slug: token,
+      title,
+      url: `${FLAME_BASE_URL}/${parsed.contentKind}/${parsed.numericId}/${token}`,
+      chapterLabel: title,
+    });
+  }
+  if (out.length === 0) {
+    return null;
+  }
+  return out.sort(
+    (a, b) =>
+      parseChapterOrderFromTitle(a.title) - parseChapterOrderFromTitle(b.title),
+  );
+}
+
+/**
+ * Extracts chapter rows from a Flame series or novel overview page (anchor + absolute URLs).
  */
 function extractChapterSummaries(
-  seriesId: string,
+  parsed: ParsedFlameSeriesSlug,
   html: string,
 ): SourceChapterSummary[] {
+  const { numericId, contentKind } = parsed;
   const titleByToken = new Map<string, string>();
   const anchorPattern = new RegExp(
-    `<a[^>]+href="(?:${escapeRegex(FLAME_BASE_URL)})?/series/${seriesId}/([a-f0-9]{16})"[^>]*>([^<]*)</a>`,
+    `<a[^>]+href="(?:${escapeRegex(FLAME_BASE_URL)})?/${contentKind}/${numericId}/([a-f0-9]{16})"[^>]*>([^<]*)</a>`,
     "gi",
   );
   for (const match of html.matchAll(anchorPattern)) {
     const token = match[1]?.toLowerCase();
     const label = match[2]?.trim();
     if (token && label && !titleByToken.has(token)) {
-      titleByToken.set(token, label);
+      titleByToken.set(token, decodeBasicHtmlEntities(label));
     }
   }
 
   const seen = new Set<string>();
   const chapters: SourceChapterSummary[] = [];
-  const urlPattern =
-    /https:\/\/flamecomics\.xyz\/series\/(\d+)\/([a-f0-9]{16})/gi;
+  const urlPattern = new RegExp(
+    `https://flamecomics\\.xyz/${contentKind}/(\\d+)/([a-f0-9]{16})`,
+    "gi",
+  );
 
   for (const match of html.matchAll(urlPattern)) {
     const id = match[1];
     const token = match[2]?.toLowerCase();
-    if (id !== seriesId || !token || seen.has(token)) {
+    if (id !== numericId || !token || seen.has(token)) {
       continue;
     }
     seen.add(token);
@@ -137,7 +207,7 @@ function extractChapterSummaries(
     chapters.push({
       slug: token,
       title,
-      url: `${FLAME_BASE_URL}/series/${seriesId}/${token}`,
+      url: `${FLAME_BASE_URL}/${contentKind}/${numericId}/${token}`,
       chapterLabel: title,
     });
   }
@@ -182,12 +252,16 @@ function buildImageUrlsFromChapterPayload(
   if (!images || typeof images !== "object") {
     return [];
   }
-  const seriesId = chapter.series_id;
+  const hostId = chapter.series_id ?? chapter.novel_id;
+  if (hostId == null) {
+    return [];
+  }
   const token = chapter.token;
   const cacheBuster =
     chapter.release_date ?? chapter.unix_timestamp ?? "";
   const suffix = cacheBuster !== "" ? `?${cacheBuster}` : "";
-  const base = `https://${FLAME_CDN_HOST}/uploads/images/series/${seriesId}/${token}/`;
+  const folder = chapter.series_id != null ? "series" : "novels";
+  const base = `https://${FLAME_CDN_HOST}/uploads/images/${folder}/${hostId}/${token}/`;
 
   return Object.keys(images)
     .sort((a, b) => Number(a) - Number(b))
@@ -199,11 +273,41 @@ function buildImageUrlsFromChapterPayload(
 }
 
 /**
+ * Collects http(s) image URLs embedded in web-novel chapter HTML content.
+ */
+function extractHttpImagesFromNovelContent(html: string): string[] {
+  const urls: string[] = [];
+  const seen = new Set<string>();
+  for (const match of html.matchAll(/src="(https?:\/\/[^"]+)"/gi)) {
+    const u = match[1];
+    if (u && !u.startsWith("data:") && !seen.has(u)) {
+      seen.add(u);
+      urls.push(u);
+    }
+  }
+  return urls;
+}
+
+/**
+ * Collects a limited number of inline `data:image/...` URLs from novel chapter HTML (reader can display them).
+ */
+function extractDataImageUrlsFromContent(html: string, max = 40): string[] {
+  const urls: string[] = [];
+  for (const match of html.matchAll(/src="(data:image[^"]+)"/gi)) {
+    const u = match[1];
+    if (u && urls.length < max) {
+      urls.push(u);
+    }
+  }
+  return urls;
+}
+
+/**
  * Fallback: pulls chapter image URLs from `<img src="https://cdn.../uploads/images/series/...">`.
  */
 function extractChapterImagesFromImgTags(html: string): string[] {
   const pattern = new RegExp(
-    `src="(https://${escapeRegex(FLAME_CDN_HOST)}/uploads/images/series/\\d+/[a-f0-9]{16}/[^"\\s]+\\.(?:jpg|jpeg|png|webp)[^"]*)"`,
+    `src="(https://${escapeRegex(FLAME_CDN_HOST)}/uploads/images/(?:series|novels)/\\d+/[a-f0-9]{16}/[^"\\s]+\\.(?:jpg|jpeg|png|webp)[^"]*)"`,
     "gi",
   );
   const urls: string[] = [];
@@ -244,7 +348,8 @@ function logFlameError(payload: Record<string, unknown>): void {
 
 /**
  * Live adapter for Flame Comics (`https://flamecomics.xyz/`).
- * Expects `seriesSlug` to be the numeric series id (e.g. `"2"`). Chapter `slug` is the 16-char hex token in URLs.
+ * Manhwa slugs are numeric (`"2"`); web novels use `novel-{id}` because browse JSON may only include `novel_id`.
+ * Chapter `slug` is the 16-char hex token in URLs.
  */
 export class FlameSourceAdapter implements SourceAdapter {
   /**
@@ -263,17 +368,18 @@ export class FlameSourceAdapter implements SourceAdapter {
   public async listSeriesChapters(
     seriesSlug: string,
   ): Promise<SourceChapterSummary[]> {
-    const seriesId = parseFlameSeriesId(seriesSlug);
-    if (!seriesId) {
+    const parsed = parseFlameSeriesSlug(seriesSlug);
+    if (!parsed) {
       logFlameError({
         code: "invalid-slug",
-        message: "Flame series slug must be the numeric series id (e.g. 2).",
+        message:
+          "Flame slug must be a numeric manhwa id or novel-{id} for web novels.",
         seriesSlug,
       });
       return [];
     }
 
-    const url = `${FLAME_BASE_URL}/series/${seriesId}`;
+    const url = `${FLAME_BASE_URL}/${parsed.contentKind}/${parsed.numericId}`;
     const html = await fetchHtml(url);
     if (!html) {
       logFlameError({
@@ -284,7 +390,9 @@ export class FlameSourceAdapter implements SourceAdapter {
       return [];
     }
 
-    const chapters = extractChapterSummaries(seriesId, html);
+    const chapters =
+      parseFlameSeriesChaptersFromNextData(html, parsed) ??
+      extractChapterSummaries(parsed, html);
     if (chapters.length === 0) {
       recordParserFailure("flame-scans", "No chapter links parsed from series page.");
       logFlameError({
@@ -296,7 +404,11 @@ export class FlameSourceAdapter implements SourceAdapter {
     }
 
     recordParserSuccess("flame-scans");
-    logFlameEvent("chapters_parsed", { seriesId, chapterCount: chapters.length });
+    logFlameEvent("chapters_parsed", {
+      seriesId: parsed.numericId,
+      kind: parsed.contentKind,
+      chapterCount: chapters.length,
+    });
     return chapters;
   }
 
@@ -307,8 +419,8 @@ export class FlameSourceAdapter implements SourceAdapter {
     seriesSlug: string,
     chapterSlug: string,
   ): Promise<SourceChapterDetail | null> {
-    const seriesId = parseFlameSeriesId(seriesSlug);
-    if (!seriesId) {
+    const parsed = parseFlameSeriesSlug(seriesSlug);
+    if (!parsed) {
       return null;
     }
 
@@ -322,7 +434,7 @@ export class FlameSourceAdapter implements SourceAdapter {
     }
 
     const token = chapterSlug.trim().toLowerCase();
-    const chapterUrl = `${FLAME_BASE_URL}/series/${seriesId}/${token}`;
+    const chapterUrl = `${FLAME_BASE_URL}/${parsed.contentKind}/${parsed.numericId}/${token}`;
     const html = await fetchHtml(chapterUrl);
     if (!html) {
       logFlameError({ code: "network", message: "Empty chapter HTML.", chapterUrl });
@@ -336,9 +448,24 @@ export class FlameSourceAdapter implements SourceAdapter {
 
     const nextData = parseNextData(html);
     const chapterPayload = nextData?.props?.pageProps?.chapter;
-    let imageUrls = chapterPayload
-      ? buildImageUrlsFromChapterPayload(chapterPayload)
-      : [];
+    let imageUrls: string[] = [];
+
+    if (chapterPayload) {
+      if (parsed.contentKind === "series") {
+        imageUrls = buildImageUrlsFromChapterPayload(chapterPayload);
+      } else {
+        const content = chapterPayload.content;
+        if (typeof content === "string") {
+          imageUrls = extractHttpImagesFromNovelContent(content);
+          if (imageUrls.length === 0) {
+            imageUrls = extractDataImageUrlsFromContent(content);
+          }
+        }
+        if (imageUrls.length === 0) {
+          imageUrls = buildImageUrlsFromChapterPayload(chapterPayload);
+        }
+      }
+    }
 
     if (imageUrls.length === 0) {
       imageUrls = extractChapterImagesFromImgTags(html);
@@ -354,10 +481,13 @@ export class FlameSourceAdapter implements SourceAdapter {
 
     const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
     const rawTitle = titleMatch?.[1]?.trim() ?? `Chapter ${token}`;
-    const title = rawTitle.replace(/\s*-\s*Flame Comics\s*$/i, "").trim();
+    const title = decodeBasicHtmlEntities(
+      rawTitle.replace(/\s*-\s*Flame Comics\s*$/i, "").trim(),
+    );
 
     logFlameEvent("chapter_images_detected", {
-      seriesId,
+      seriesId: parsed.numericId,
+      kind: parsed.contentKind,
       token,
       imageCount: imageUrls.length,
     });
@@ -375,7 +505,8 @@ export class FlameSourceAdapter implements SourceAdapter {
  * Test-only helpers (parsers) for regression tests.
  */
 export const FLAME_TEST_UTILS = {
-  parseFlameSeriesId,
+  parseFlameSeriesSlug,
+  parseFlameSeriesChaptersFromNextData,
   extractChapterSummaries,
   parseNextData,
   buildImageUrlsFromChapterPayload,

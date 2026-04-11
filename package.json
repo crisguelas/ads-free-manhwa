@@ -3,11 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "postinstall": "prisma generate",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "tsx --test lib/sources/adapters/asura-source-adapter.test.ts lib/sources/adapters/flame-source-adapter.test.ts lib/db-connection-string.test.ts lib/reading-progress.test.ts lib/auth/reset-token.test.ts",
+    "test": "tsx --test lib/sources/adapters/asura-source-adapter.test.ts lib/sources/adapters/flame-source-adapter.test.ts lib/db-connection-string.test.ts lib/reading-progress.test.ts lib/auth/reset-token.test.ts lib/live-source-browse.test.ts lib/asura-comic-format.test.ts lib/scanlation-format-filter.test.ts lib/series-synopsis.test.ts lib/html-entities.test.ts lib/follow-series-title.test.ts lib/continue-reading-display.test.ts lib/follow-source-disambiguation.test.ts",
+    "backfill:follow-titles": "tsx scripts/backfill-follow-series-titles.ts",
+    "cleanup:flame-novel-reading-history": "tsx scripts/delete-flame-novel-reading-history.ts",
     "test:integration": "tsx --test lib/auth/password-reset.integration.test.ts",
     "seed": "tsx prisma/seed.ts"
   },

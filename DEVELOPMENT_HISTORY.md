@@ -10,6 +10,190 @@ This file tracks implementation steps so future developers can understand what w
 
 ## Timeline
 
+### 2026-04-11 - Series detail: status pill on cover (Asura-style)
+
+**Objective**
+- Show publication status (ongoing / completed / dropped / …) at the bottom of the poster on `/manhwa/[id]`, similar to Asura’s per-series badges.
+
+**Changes made**
+- `lib/reader-data.ts`: `SeriesDetailData` includes `seriesStatus`; `getSeriesDetailData` calls `resolveSeriesStatusForReader` (same source as chapter reader).
+- `components/series-detail-view.tsx`: gradient strip + pill overlay on the cover; always show poster column with status even when cover URL is missing (placeholder).
+
+**Verification**
+- `npm run lint`, `npm run build`.
+
+**Next**
+- None.
+
+---
+
+### 2026-04-11 - Asura browse: fetch all pages (not only nav window)
+
+**Objective**
+- `/browse/asura-scans` stopped after ~5–6 source pages because Asura’s HTML only links to the next few `?page=` URLs; the app used that as the total page count and missed most series.
+
+**Changes made**
+- `lib/live-source-browse.ts`: `fetchAllAsuraBrowseRows` now requests page 1, 2, … until a page yields zero parsed cards (with a high safety cap); raised `ASURA_BROWSE_MAX_PAGES`; `live-asura-browse-series` cache **v4**; JSDoc on `maxAsuraBrowsePageFromHtml`.
+- `README.md`: note on Asura pagination walk.
+
+**Verification**
+- `npm run test`, `npm run lint`, `npm run build`.
+
+**Next**
+- None unless Asura changes browse URL shape.
+
+---
+
+### 2026-04-11 - Browse format allowlist: add Webtoon
+
+**Objective**
+- Include **Webtoon** alongside manhwa, manga, and manhua so Asura/Flame rows tagged as webtoon are not dropped.
+
+**Changes made**
+- `lib/scanlation-format-filter.ts`: allowlist includes `webtoon`.
+- `lib/live-source-browse.ts`, tests, `README.md`: copy/comments; browse cache keys bumped (Asura v3, Flame v5).
+
+**Verification**
+- `npm run test`, `npm run lint`, `npm run build`.
+
+**Next**
+- None unless new format labels need mapping.
+
+---
+
+### 2026-04-11 - Browse filters: manhwa / manga / manhua only (Flame + Asura)
+
+**Objective**
+- Restrict live catalog scraping to comic-strip formats the group cares about: manhwa, manga, manhua — not Flame web novels, “Comic”, “Web Novel”, etc.
+
+**Changes made**
+- `lib/scanlation-format-filter.ts`: shared allowlist helper.
+- `lib/asura-comic-format.ts`: parse format pill from Asura series HTML.
+- `lib/live-source-browse.ts`: Flame browse JSON filters by `type`; novel rows omitted; Asura browse rows filtered after fetching each `/comics/{slug}` (batched concurrency); cache keys bumped (`home-latest-*` / `live-*-browse-series` v2 or v4).
+- Tests: `lib/asura-comic-format.test.ts`, `lib/scanlation-format-filter.test.ts`; extended `lib/live-source-browse.test.ts`.
+- `README.md`: scope note on browse filtering.
+
+**Verification**
+- `npm run test`, `npm run lint`, `npm run build`.
+
+**Next**
+- If Asura labels many Korean series as “Webtoon” instead of “Manhwa”, consider adding `webtoon` to the allowlist or mapping rules.
+
+---
+
+### 2026-04-11 - Hide Flame web-novel slugs; manhwa chapter titles from `__NEXT_DATA__`
+
+**Objective**
+- Stop linking `/manhwa/novel-8` (web novel ORV) when the comic is `/manhwa/2`; remove `novel-*` from continue reading, home Flame latest, and browse catalog. Show real chapter names on `/manhwa/2` instead of `Chapter {hex}`.
+
+**Changes made**
+- `lib/flame-series-slug.ts`: `isFlameWebNovelSeriesSlug`.
+- `lib/live-source-browse.ts`: filter `novel-*` from home latest + merged browse; cache bump to **v3**.
+- `lib/home-data.ts`: skip Flame web-novel rows in continue-reading history.
+- `lib/reader-data.ts`: removed `novel-` resolver fallback (novel URLs are not in catalog).
+- `lib/series-synopsis.ts`: removed unused `getCachedFlameOverviewTitle`.
+- `lib/sources/adapters/flame-source-adapter.ts`: `parseFlameSeriesChaptersFromNextData` reads `pageProps.chapters` before anchor scrape; regression test added.
+
+**Verification**
+- `npm run test`, `npm run lint`, `npm run build`.
+
+**Next**
+- Run `npm run cleanup:flame-novel-reading-history` once per environment if you want those rows removed from the database (see entry below).
+
+---
+
+### 2026-04-11 - Cleanup: delete Flame `novel-*` reading history rows
+
+**Objective**
+- Provide an optional, idempotent way to remove legacy `ReadingHistory` rows left over when the UI still linked Flame web novels (`novel-{id}` slugs).
+
+**Changes made**
+- `lib/run-delete-flame-novel-reading-history.ts`: `runDeleteFlameNovelReadingHistory` (SQL delete scoped to `flame-scans` + `seriesSlug` ~ `^novel-[0-9]+$`).
+- `scripts/delete-flame-novel-reading-history.ts`, `package.json` script `cleanup:flame-novel-reading-history`.
+
+**Verification**
+- `npm run lint`, `npm run build`, `npm run cleanup:flame-novel-reading-history` (local DB: second run reported 0 deleted).
+
+**Next**
+- None unless Flame slug conventions change again.
+
+---
+
+### 2026-04-11 - Flame `novel-{id}` series 404 + browse cache mismatch
+
+**Objective**
+- `/manhwa/novel-8` (and similar) returned 404 because `resolveSeriesContextForUser` only looked up `buildLiveBrowseCatalogForSource`, which used a **stale** `unstable_cache` key (`live-flame-browse-series` v1) from before web-novel slugs existed, while the home “latest” column used a **separate** cache that already listed `novel-{id}` rows.
+
+**Changes made**
+- `lib/live-source-browse.ts`: bumped Flame caches to **v2** (`live-flame-browse-series`, `home-latest-flame`) so merged catalog includes `novel-*` slugs without waiting for the old TTL.
+- `lib/series-synopsis.ts`: `getCachedFlameOverviewTitle` for `<title>` on manhwa/novel overview pages.
+- `lib/reader-data.ts`: if the live list still misses a slug matching `novel-{digits}`, resolve Flame context via overview title + `resolveSeriesCoverUrl` instead of 404.
+
+**Verification**
+- `npm run lint`, `npm run test`, `npm run build`.
+
+**Next**
+- None unless Flame changes URL shapes again.
+
+---
+
+### 2026-04-11 - Flame browse: web novels use `novel_id` (fix wrong title / empty chapters from home latest)
+
+**Objective**
+- Home “Latest from Flame Comics” showed the Web Novel ORV tile with a broken slug (`series_id` missing → `undefined`), duplicate React keys, links to `/series/8` (a different manhwa) instead of `/novel/8`, and empty or wrong detail data.
+
+**Changes made**
+- `lib/flame-series-slug.ts`: `parseFlameSeriesSlug`, `flameOverviewPageUrl` for manhwa (`/series/{id}`) vs web novel (`/novel/{id}`).
+- `lib/live-source-browse.ts`: `flameJsonSeriesToRow` uses `series_id ?? novel_id`, slug `novel-{id}` for novels, CDN under `uploads/images/novels/{id}/`; skip invalid rows; `flatMap` to drop nulls.
+- `lib/sources/adapters/flame-source-adapter.ts`: list/chapter fetches use parsed kind; chapter summaries and reader support novel HTML + `novels/` CDN paths.
+- `lib/catalog-covers.ts`, `lib/series-synopsis.ts`: Flame overview URLs via `parseFlameSeriesSlug`; cache key `v2` for Flame covers.
+- Tests: `flame-source-adapter.test.ts`, `live-source-browse.test.ts`.
+
+**Verification**
+- `npm run test`, `npm run lint`, `npm run build`.
+
+**Next**
+- None unless Flame changes JSON shape again.
+
+---
+
+### 2026-04-11 - Fix wrong series page when same slug exists on Asura + Flame follows
+
+**Objective**
+- Opening a Flame numeric series (e.g. from home “Latest from Flame Comics”) sometimes showed another title, no cover, and zero chapters because `resolveSeriesContextForUser` used `follow.findFirst` on `seriesSlug` only; `Follow` allows the same slug for both sources, and an arbitrary row could win.
+
+**Changes made**
+- `lib/follow-source-disambiguation.ts`: `pickRowWhenSeriesSlugSpansScanSources` mirrors live-browse rules (all-digit slug → Flame, otherwise Asura when both follow rows exist).
+- `lib/reader-data.ts`: `findMany` on follows + picker before catalog/live resolution.
+- `components/browse-ui-client.tsx`: latest-update list keys use `sourceKey` + `seriesSlug` for stable React identity.
+- `lib/follow-source-disambiguation.test.ts`; `package.json` test script entry.
+
+**Verification**
+- `npm run test`, `npm run lint`, `npm run build`.
+
+**Next**
+- Optional: disambiguate `readingHistory.findFirst` by `sourceId` where the same chapter slug could theoretically collide across sources.
+
+---
+
+### 2026-04-11 - Continue reading: cover images without Follow rows
+
+**Objective**
+- Show poster images on the home “Continue reading” carousel when reading history exists but `Follow.coverImageUrl` is unset (common for history-only or legacy follows).
+
+**Changes made**
+- `lib/catalog-covers.ts`: exported `resolveSeriesCoverUrl` (cached live Asura/Flame `og:image`, then `CATALOG_HIGHLIGHTS` static URLs); private `staticCatalogCoverFallback` with Asura hash normalization.
+- `lib/home-data.ts`: `attachFollowCoversToRecentReads` fills missing covers via `resolveSeriesCoverUrl` after the follow map lookup.
+- `README.md`: noted continue-reading cover resolution.
+
+**Verification**
+- `npm run lint`, `npm run build`.
+
+**Next**
+- None unless upstream blocks `og:image` fetches in deployment (then tune caching or fallbacks).
+
+---
+
 ### 2026-04-10 - Project initialization from scratch
 
 **Objective**
@@ -637,3 +821,322 @@ This file tracks implementation steps so future developers can understand what w
 
 **Next**
 - If Asura re-adds the series, slug + live enrichment may override this fallback automatically.
+
+---
+
+### 2026-04-11 - Home UI: Asura-style layout on premium white chrome
+
+**Objective**
+- Match scan-portal information architecture (hero carousel, trending strip, two-column latest + sidebar) while keeping a light, premium theme and distinct branding.
+
+**Changes made**
+- `components/home-browse.tsx`: hero with blurred backdrop, spotlight carousel, trending row, paged “latest updates” grid, sidebar (popular tabs, staff pick, sources), announcements strip, library anchor.
+- `components/site-header.tsx`: Home / Library / Browse / Resources, header search (scrolls to catalog), violet accent bar and register CTA.
+- `components/browse-ui-client.tsx`: client pieces for search, dismissible promo ribbon, latest pagination, popular period tabs.
+- `components/site-footer.tsx`, `app/layout.tsx`, `app/page.tsx`: footer shell and a single home `<main>` landmark.
+- `lib/browse-rating.ts`: shared pseudo star score for layout-only cards.
+- `app/globals.css`: slightly brighter white canvas token.
+
+**Verification**
+- `npm run lint`, `npm run build`.
+
+**Next**
+- Optional real search/index; wire popular tabs to analytics when available.
+
+---
+
+### 2026-04-11 - Home browse: trim hero, trending, sidebar extras
+
+**Objective**
+- Simplify the home page by dropping spotlight, trending, staff pick, sources panel, and announcements.
+
+**Changes made**
+- `components/home-browse.tsx`: removed those sections; kept continue reading, source filters, latest updates + pagination, all-series grid, popular sidebar, and library block.
+
+**Verification**
+- `npm run lint`, `npm run build`.
+
+**Next**
+- None required unless new browse modules are requested.
+
+---
+
+### 2026-04-11 - Nav + per-source browse routes + bookmarks page
+
+**Objective**
+- Simplify header to Home, Browse (submenu), and Bookmarks; remove Library/Resources. Add paginated catalog pages per scanlation source.
+
+**Changes made**
+- `components/site-header.tsx`: Browse `<details>` links to `/browse/asura-scans` and `/browse/flame-scans`; Bookmarks → `/bookmarks`.
+- `app/browse/[sourceKey]/page.tsx`, `components/source-browse-view.tsx`, `components/browse-pagination.tsx`, `lib/source-browse-data.ts`: enriched catalog slice, 12 per page, `?page=` navigation.
+- `app/bookmarks/page.tsx`, `lib/bookmarks-page-data.ts`: list user bookmarks (login required).
+- `components/home-browse.tsx`, `app/page.tsx`: dropped `?source=` filter; home links into browse routes; removed library section.
+- `lib/home-data.ts`: removed follows payload from home data (continue-reading cover resolution unchanged).
+- `components/site-footer.tsx`, `components/source-overview.tsx`: align copy/links with new routes.
+
+**Verification**
+- `npm run lint`, `npm run build`.
+
+**Next**
+- Optional bookmark creation UI in chapter reader if not yet exposed.
+
+---
+
+### 2026-04-11 - Browse: live Asura/Flame series index + test wiring
+
+**Objective**
+- Show the full discoverable series set on `/browse/asura-scans` and `/browse/flame-scans` (not only the small curated highlight list), while keeping curated-only supplements when the scrape omits a title.
+
+**Changes made**
+- `lib/live-source-browse.ts`: fetch and parse Asura `/browse` (paginated) and Flame `/browse` (`__NEXT_DATA__`), merge with `CATALOG_HIGHLIGHTS` (Asura slug hash normalization for dedupe), `unstable_cache` tags ~1h.
+- `lib/browse-constants.ts`, `lib/source-browse-data.ts`: `getBrowseCatalogForSource` delegates to live builder; re-export browse source keys/labels.
+- `lib/live-source-browse.test.ts`: `node:test` coverage for Asura helpers; `package.json` `test` script includes this file.
+- `lib/source-browse-data.ts`: drop unused re-imports (lint clean).
+
+**Verification**
+- `npm run test`, `npm run lint`, `npm run build`.
+
+**Next**
+- Tune page caps or parallelism if upstream rate-limits; expand tests with recorded HTML fixtures if network flakiness appears in CI.
+
+---
+
+### 2026-04-11 - Browse pagination: 20 titles, five-row grid
+
+**Objective**
+- Show 20 series per `/browse/asura-scans` and `/browse/flame-scans` page and align the grid so those titles form five rows (four columns from the `sm` breakpoint up).
+
+**Changes made**
+- `lib/browse-constants.ts`: added `BROWSE_PAGE_SIZE` (20) with documentation.
+- `app/browse/[sourceKey]/page.tsx`: slice catalog with `BROWSE_PAGE_SIZE` instead of a hard-coded 12.
+- `components/source-browse-view.tsx`: `sm:grid-cols-4` (was up to five columns on large screens) so 20 items fill five rows; narrow viewports stay two columns.
+- `README.md`: noted 20 series per browse page in Current Scope.
+
+**Verification**
+- `npm run lint`, `npm run build`.
+
+**Next**
+- None unless browse density or mobile column count should be adjusted further.
+
+---
+
+### 2026-04-11 - Home: dual live latest panels, drop popular + all-series grid, header polish
+
+**Objective**
+- Simplify the home page (no popular sidebar, no duplicate “all series” grid), show real latest-style lists per source (Asura + Flame), and make header nav interactions feel smoother.
+
+**Changes made**
+- `lib/live-source-browse.ts`: `parseFlameBrowseSeriesByRecency`, shared `flameJsonSeriesToRow`, cached `getHomeLatestAsuraHighlights` / `getHomeLatestFlameHighlights` (30m revalidate) with curated fallbacks.
+- `lib/home-data.ts`: `latestAsura` / `latestFlame` replace `catalogHighlights`; parallel `enrichCatalogHighlightCovers` on both lists.
+- `components/home-browse.tsx`: two `SourceLatestUpdatesSection` blocks, tighter layout, lifted browse pills.
+- `components/browse-ui-client.tsx`: `SourceLatestUpdatesSection`, refreshed `LatestUpdateBlock` / `PagedLatestUpdates`; removed `PopularRankingTabs`.
+- `components/site-header.tsx`: backdrop blur, duration-based hovers, focus rings, animated Browse dropdown (`group-open/…`).
+- Tests: `parseFlameBrowseSeriesByRecency` ordering; `README.md` / copy tweaks in `featured-series.ts`, `app/page.tsx`.
+
+**Verification**
+- `npm run test`, `npm run lint`, `npm run build`.
+
+**Next**
+- Optional: scrape Asura homepage widget if browse page order diverges from “latest” expectations.
+
+---
+
+### 2026-04-11 - Series detail page: synopsis, actions, chapter search
+
+**Objective**
+- Match scan-style series layout: title + description, Bookmark / First / Latest actions, and a searchable chapter list with sort and optional dates.
+
+**Changes made**
+- `lib/series-synopsis.ts` + `getCachedSeriesSynopsis`: meta / Flame `__NEXT_DATA__` synopsis fetch; `resolveAsuraSeriesSlug` exported from Asura adapter for URL resolution.
+- `lib/reader-data.ts`: `SeriesDetailData` gains synopsis, cover, first/latest slugs, `bookmarkIdForFirstChapter`, chapter `publishedAt`; `resolveSeriesContextForUser` exported; follow/catalog `coverImageUrl` on context.
+- `lib/bookmark-api.ts`, `app/api/bookmarks/route.ts`: POST upsert (returns `bookmarkId`), DELETE by id.
+- `components/series-detail-view.tsx` (client): hero, expandable synopsis, buttons, chapter toolbar + search + scroll list; compact bookmarks/recent blocks below.
+- `app/manhwa/[id]/page.tsx`: renders `SeriesDetailView`.
+- Tests: `lib/series-synopsis.test.ts`; `package.json` test script extended; `README.md` API note.
+
+**Verification**
+- `npm run test`, `npm run lint`, `npm run build`.
+
+**Next**
+- Optional: populate `ChapterCache.publishedAt` from adapters when sources expose dates.
+
+---
+
+### 2026-04-11 - Fix 404 opening series from home latest lists
+
+**Objective**
+- Detail and reader routes must resolve slugs from the live Asura/Flame browse merge, not only `CATALOG_HIGHLIGHTS`, so home “latest” tiles match `/manhwa/[id]`.
+
+**Changes made**
+- `lib/reader-data.ts`: after follow + curated lookup, `resolveSeriesContextForUser` checks `buildLiveBrowseCatalogForSource` for both sources; disambiguates rare slug collisions (numeric → Flame).
+
+**Verification**
+- `npm run lint`, `npm run build`.
+
+**Next**
+- None unless URL strategy changes (e.g. explicit `sourceKey` in path).
+
+---
+
+### 2026-04-11 - Reader UX: clarify “page” counter, strip layout, chrome
+
+**Objective**
+- Explain that “Page 3 / 3” meant the 3rd image in a vertical chapter strip (not paginated chapters), and improve reader immersion and navigation.
+
+**Changes made**
+- `components/chapter-reader-view.tsx`: violet top scroll-progress bar; images in one column with light dividers; copy “Image X of Y” + strip/resume hint; floating counter above bottom nav; eager-load first five images; `onLoad` triggers progress recalc after lazy decode.
+- `app/manhwa/[id]/chapter/[cid]/page.tsx`: sticky compact header (below progress bar), resume/start hints, fixed bottom prev/next with safe-area padding, extra bottom padding for content.
+
+**Verification**
+- `npm run lint`, `npm run build`.
+
+**Next**
+- Optional tap-to-hide chrome for a fuller fullscreen read.
+
+---
+
+### 2026-04-11 - Reader: dark theme, scroll-to-top, series status
+
+**Objective**
+- Dark reader shell, lower-left smooth scroll-to-top control, and ongoing/finished (etc.) status on the chapter header.
+
+**Changes made**
+- `lib/series-synopsis.ts`: `getCachedSeriesPageMeta` (synopsis + status, single cache); Flame JSON reads `status` / `series_status` / `publication_status`; Asura `extractAsuraSeriesStatusFromHtml`; `getCachedSeriesSynopsis` delegates to page meta.
+- `lib/reader-data.ts`: `SeriesReaderStatus`, `formatSeriesStatusForReader`, `resolveSeriesStatusForReader`; `ChapterReaderData.seriesStatus`; detail page cache select + fill uses page meta for status; reader loads status from cache or meta.
+- `components/chapter-reader-view.tsx`: dark strip/chrome, scroll-to-top button (after ~6% scroll), violet progress on zinc track.
+- `app/manhwa/[id]/chapter/[cid]/page.tsx`: `bg-zinc-950` layout, status pill, dark nav.
+- `lib/series-synopsis.test.ts`: Asura status extraction test.
+
+**Verification**
+- `npm run test`, `npm run lint`, `npm run build`.
+
+**Next**
+- Optional: show the same status pill on the series detail page.
+
+---
+
+### 2026-04-11 - Header Browse hover, submenu fade, HTML title entities
+
+**Objective**
+- Make the Browse submenu follow hover (and hide when the pointer leaves), use smooth fade motion instead of a stuck-open `details` panel, and show apostrophes correctly in scraped titles (e.g. `&#x27;`).
+
+**Changes made**
+- Added `components/browse-nav-dropdown.tsx` (client): hover-open on `(hover: hover)` devices, tap-to-toggle on touch-first viewports, short close delay for the trigger–panel gap, opacity + translate transition; wired from `components/site-header.tsx`.
+- Added `lib/html-entities.ts` with `decodeBasicHtmlEntities` (named + decimal/hex numeric references); used in live browse, synopsis meta parsing, and Asura/Flame chapter title paths; `lib/html-entities.test.ts` + `package.json` test script entry.
+- Header nav links use the same transition timing properties for consistent fade-friendly motion.
+
+**Verification**
+- `npm run test`, `npm run lint`, `npm run build`.
+
+**Next**
+- None unless submenu should also close on outside tap for touch-only users.
+
+---
+
+### 2026-04-11 - Follow `seriesTitle`: decode on read/write + optional backfill
+
+**Objective**
+- Keep follow-based series labels stable and readable: decode HTML entities on read, normalize on write, and offer a one-time DB backfill for legacy rows.
+
+**Changes made**
+- Added `lib/follow-series-title.ts` with `normalizeFollowSeriesTitleForStorage` and `displayFollowSeriesTitle`.
+- `lib/reader-data.ts` `resolveSeriesContextForUser`: follow branch uses `displayFollowSeriesTitle`; catalog/live branches decode titles defensively.
+- `prisma/seed.ts`: follow upserts pass titles through `normalizeFollowSeriesTitleForStorage`.
+- `scripts/backfill-follow-series-titles.ts` + `npm run backfill:follow-titles`; `lib/follow-series-title.test.ts`; `README.md` command note.
+
+**Verification**
+- `npm run test`, `npm run lint`, `npm run build`.
+
+**Next**
+- When a follow-creation API/UI is added, call `normalizeFollowSeriesTitleForStorage` before `create`/`upsert`.
+
+---
+
+### 2026-04-11 - Automatic follow title backfill on production startup
+
+**Objective**
+- Avoid manual `npm run backfill:follow-titles` on each host: run the same normalization when the production Node server starts, safely under concurrency.
+
+**Changes made**
+- Added `lib/run-follow-series-title-backfill.ts` (`runFollowSeriesTitleBackfill`) using `prisma.$transaction` + `pg_try_advisory_xact_lock(872341001)` so pooled connections and multiple instances are safe; only scans follow rows whose title likely contains HTML entities (`&#`, `&amp;`, etc.) so cold starts stay cheap once data is clean.
+- `instrumentation.ts`: after URL normalization, in production only (unless `SKIP_FOLLOW_TITLE_BACKFILL=1`), dynamic-imports and runs the backfill; errors are logged non-fatally.
+- `scripts/backfill-follow-series-titles.ts` delegates to the shared runner; `.env.example`, `README.md` document auto behavior and opt-out.
+
+**Verification**
+- `npm run lint`, `npm run build`.
+
+**Next**
+- If cold-start latency becomes an issue at very large `Follow` counts, consider batching updates or a dedicated release job.
+
+---
+
+### 2026-04-11 - Vercel deploy readiness + single home “continue reading” row
+
+**Objective**
+- Document and script Prisma client generation for GitHub → Vercel deploys; simplify signed-in home resume UI to one most-recent chapter with clearer series context.
+
+**Changes made**
+- `package.json`: `postinstall` runs `prisma generate` so Vercel installs produce the client before `next build`.
+- `README.md`: “Deploying on Vercel (GitHub)” checklist (env vars, migrations, runtime notes).
+- `lib/home-data.ts`: `readingHistory` query `take: 1`; `ContinueReadingCard` adds optional `seriesTitle` from follow rows (`displayFollowSeriesTitle`).
+- `components/home-browse.tsx`: one resume card (cover + series + chapter + source); `components/source-overview.tsx` shows `seriesTitle` when present for type alignment.
+
+**Verification**
+- `npm run lint`, `npm run build`.
+
+**Next**
+- Run `npx prisma migrate deploy` against production DB after first Vercel env setup.
+
+---
+
+### 2026-04-11 - Continue reading: dedupe by series, clean titles, shorter chapter line
+
+**Objective**
+- Home “Continue reading” should list each series once with only the latest opened chapter, avoid repeating the series name in the chapter line, and strip Asura hash tokens from displayed titles (slug or stored follow title).
+
+**Changes made**
+- `lib/continue-reading-display.ts`: normalized dedupe key (`stripAsuraHashSuffix` for Asura), follow map lookup for hashed vs unhashed slugs, `displaySeriesTitleForContinueCard`, `shortChapterLineForContinueCard` (drops leading series title from chapter labels).
+- `lib/home-data.ts`: fetch recent history window, dedupe by `sourceId` + normalized slug, cap 48 series; `ContinueReadingCard.sourceKey`; follow cover/title resolution via `followRowLookupKeys`.
+- `components/home-browse.tsx`: stacked resume cards using the new helpers; `components/source-overview.tsx` aligned for `sourceKey`.
+- `lib/continue-reading-display.test.ts` + `package.json` test script.
+
+**Verification**
+- `npm run test`, `npm run lint`, `npm run build`.
+
+**Next**
+- If readers exceed the fetch window for unique series, raise `CONTINUE_READING_HISTORY_FETCH` or add a SQL `DISTINCT ON` query.
+
+---
+
+### 2026-04-11 - Continue reading horizontal carousel
+
+**Objective**
+- Match scan-style home resume: one horizontal row of vertical tiles (cover, truncated title, last chapter) with prev/next controls when the list overflows.
+
+**Changes made**
+- `components/continue-reading-carousel.tsx` (client): scroll-snap row, `ResizeObserver` + scroll listeners for arrow visibility, smooth `scrollBy` paging.
+- `components/home-browse.tsx`: uses the carousel instead of stacked wide cards.
+
+**Verification**
+- `npm run lint`, `npm run build`.
+
+**Next**
+- None unless carousel should loop or show source label on tiles again.
+
+---
+
+### 2026-04-11 - Continue reading carousel: correct series vs chapter labels
+
+**Objective**
+- Fix tiles where the series name appeared on the chapter row (Flame numeric slugs), “Solo Leveling” split across rows, and `<title>` tails like `- Read Online` broke parsing.
+
+**Changes made**
+- `lib/continue-reading-display.ts`: `cleanChapterPageTitleForSplit` strips `- Read Online` / `- Premium` without requiring `|`; `splitSeriesAndChapterFromPageTitle`, `resolveContinueReadingCarouselLabels`, and `isWholeWordPrefix` to prefer parsed series when slug/follow says `Series {id}` or a short prefix of the real title.
+- `components/continue-reading-carousel.tsx`: uses `resolveContinueReadingCarouselLabels`; slightly wider tiles and `line-clamp-2` for titles.
+- `lib/continue-reading-display.test.ts`: regression cases for Flame slug + short follow title.
+
+**Verification**
+- `npm run test`, `npm run lint`, `npm run build`.
+
+**Next**
+- None unless sources emit non-`Chapter n` patterns (e.g. “Episode”).

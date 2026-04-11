@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { getSessionUser } from "@/lib/auth/current-user";
 import "./globals.css";
@@ -16,7 +17,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Manhwa Cloud",
-  description: "Read manhwa with your library, follows, and synced progress.",
+  description: "Read manhwa with per-source browse, bookmarks, and synced progress.",
 };
 
 export default async function RootLayout({
@@ -33,7 +34,8 @@ export default async function RootLayout({
     >
       <body className="flex min-h-full flex-col font-sans text-zinc-900 antialiased">
         <SiteHeader user={user} />
-        {children}
+        <div className="flex flex-1 flex-col">{children}</div>
+        <SiteFooter />
       </body>
     </html>
   );

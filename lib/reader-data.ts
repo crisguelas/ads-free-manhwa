@@ -1,6 +1,11 @@
 import { CATALOG_HIGHLIGHTS } from "@/lib/featured-series";
 import { getSessionUser } from "@/lib/auth/current-user";
+import { pickRowWhenSeriesSlugSpansScanSources } from "@/lib/follow-source-disambiguation";
+import { displayFollowSeriesTitle } from "@/lib/follow-series-title";
+import { decodeBasicHtmlEntities } from "@/lib/html-entities";
+import { buildLiveBrowseCatalogForSource } from "@/lib/live-source-browse";
 import { prisma } from "@/lib/prisma";
+import { getCachedSeriesPageMeta } from "@/lib/series-synopsis";
 import {
   recordCacheSyncFallback,
   recordCacheSyncSuccess,
@@ -31,10 +36,15 @@ function parseGenericChapterSortKey(title: string, slug: string): number {
   return Number.MAX_SAFE_INTEGER;
 }
 
-type LiveChapterRow = { slug: string; title: string; url: string };
+type LiveChapterRow = {
+  slug: string;
+  title: string;
+  url: string;
+  publishedAt: Date | null;
+};
 
 /**
- * Sorts chapter rows ascending by inferred chapter number (earliest episode at the top).
+ * Sorts chapter rows ascending by inferred chapter number (earliest episode at index 0).
  */
 function sortLiveChaptersReadingOrder(chapters: LiveChapterRow[]): LiveChapterRow[] {
   return [...chapters].sort(
@@ -75,17 +85,19 @@ type ResolvedSeriesContext = {
   sourceKey: string;
   sourceName: string;
   sourceBaseUrl: string;
+  /** Poster URL from follow row or curated catalog when available. */
+  coverImageUrl: string | null;
 };
 
 /**
- * Resolves which source and title apply to `seriesSlug` for this user.
- * Prefer an explicit `Follow`; otherwise allow any title linked from `CATALOG_HIGHLIGHTS` so browse tiles open without a follow row.
+ * Resolves which source and title apply to `seriesSlug` for this user (also used by bookmark API).
+ * Prefer an explicit `Follow`; otherwise curated highlights; otherwise any slug present on the live Asura/Flame browse index (same as home/browse tiles).
  */
-async function resolveSeriesContextForUser(
+export async function resolveSeriesContextForUser(
   seriesSlug: string,
   userId: string,
 ): Promise<ResolvedSeriesContext | null> {
-  const follow = await prisma.follow.findFirst({
+  const followRows = await prisma.follow.findMany({
     where: {
       seriesSlug,
       userId,
@@ -94,6 +106,7 @@ async function resolveSeriesContextForUser(
       seriesSlug: true,
       seriesTitle: true,
       sourceId: true,
+      coverImageUrl: true,
       source: {
         select: {
           key: true,
@@ -104,25 +117,67 @@ async function resolveSeriesContextForUser(
     },
   });
 
-  if (follow) {
+  if (followRows.length > 0) {
+    const follow = pickRowWhenSeriesSlugSpansScanSources(followRows, seriesSlug);
     return {
       seriesSlug: follow.seriesSlug,
-      seriesTitle: follow.seriesTitle,
+      seriesTitle: displayFollowSeriesTitle(follow.seriesTitle),
       sourceId: follow.sourceId,
       sourceKey: follow.source.key,
       sourceName: follow.source.name,
       sourceBaseUrl: follow.source.baseUrl,
+      coverImageUrl: follow.coverImageUrl,
     };
   }
 
   const catalogEntry = CATALOG_HIGHLIGHTS.find((h) => h.seriesSlug === seriesSlug);
-  if (!catalogEntry) {
+  if (catalogEntry) {
+    const sourceRow = await prisma.source.findFirst({
+      where: {
+        key: catalogEntry.sourceKey,
+        isEnabled: true,
+      },
+      select: {
+        id: true,
+        key: true,
+        name: true,
+        baseUrl: true,
+      },
+    });
+
+    if (!sourceRow) {
+      return null;
+    }
+
+    return {
+      seriesSlug,
+      seriesTitle: decodeBasicHtmlEntities(catalogEntry.title).trim(),
+      sourceId: sourceRow.id,
+      sourceKey: sourceRow.key,
+      sourceName: sourceRow.name,
+      sourceBaseUrl: sourceRow.baseUrl,
+      coverImageUrl: catalogEntry.coverImageUrl ?? null,
+    };
+  }
+
+  const [asuraList, flameList] = await Promise.all([
+    buildLiveBrowseCatalogForSource("asura-scans"),
+    buildLiveBrowseCatalogForSource("flame-scans"),
+  ]);
+  const asuraHit = asuraList.find((h) => h.seriesSlug === seriesSlug);
+  const flameHit = flameList.find((h) => h.seriesSlug === seriesSlug);
+  let liveEntry = asuraHit ?? flameHit;
+  if (asuraHit && flameHit) {
+    liveEntry = /^\d+$/.test(seriesSlug) ? flameHit : asuraHit;
+  }
+
+  if (!liveEntry) {
     return null;
   }
 
   const sourceRow = await prisma.source.findFirst({
     where: {
-      key: catalogEntry.sourceKey,
+      key: liveEntry.sourceKey,
       isEnabled: true,
     },
     select: {
@@ -139,11 +194,12 @@ async function resolveSeriesContextForUser(
 
   return {
     seriesSlug,
-    seriesTitle: catalogEntry.title,
+    seriesTitle: decodeBasicHtmlEntities(liveEntry.title).trim(),
     sourceId: sourceRow.id,
     sourceKey: sourceRow.key,
     sourceName: sourceRow.name,
     sourceBaseUrl: sourceRow.baseUrl,
+    coverImageUrl: liveEntry.coverImageUrl ?? null,
   };
 }
 
@@ -157,12 +213,20 @@ export type SeriesDetailData = {
   sourceName: string;
   adapterName: string | null;
   sourceBaseUrl: string;
+  /** Short series description for the detail hero (meta / Flame JSON / cache). */
+  synopsis: string | null;
+  coverImageUrl: string | null;
   latestChapterSlug: string | null;
   latestChapterTitle: string | null;
+  firstChapterSlug: string | null;
+  firstChapterTitle: string | null;
+  /** Bookmark row id when the first chapter is bookmarked (for toggle UI). */
+  bookmarkIdForFirstChapter: string | null;
   liveChapters: Array<{
     slug: string;
     title: string;
     url: string;
+    publishedAt: string | null;
   }>;
   bookmarks: Array<{
     id: string;
@@ -176,7 +240,39 @@ export type SeriesDetailData = {
     chapterTitle: string | null;
     pageNumber: number | null;
   }>;
+  /** Publication status for hero overlay (same normalization as the chapter reader). */
+  seriesStatus: SeriesReaderStatus;
 };
+
+/**
+ * Normalized scan status for reader chrome (ongoing vs finished, etc.).
+ */
+export type SeriesReaderStatus = {
+  label: string;
+  variant: "ongoing" | "completed" | "hiatus" | "unknown" | "other";
+};
+
+/**
+ * Maps raw site status strings into short labels for the reader header.
+ */
+export function formatSeriesStatusForReader(
+  raw: string | null | undefined,
+): SeriesReaderStatus {
+  if (!raw?.trim()) {
+    return { label: "Unknown", variant: "unknown" };
+  }
+  const s = raw.trim().toLowerCase();
+  if (/\b(complete|completed|finished|ended)\b/.test(s)) {
+    return { label: "Finished", variant: "completed" };
+  }
+  if (/\b(ongoing|updating|active|serializing)\b/.test(s)) {
+    return { label: "Ongoing", variant: "ongoing" };
+  }
+  if (/\b(hiatus|paused|cancelled|canceled|dropped)\b/.test(s)) {
+    return { label: raw.trim(), variant: "hiatus" };
+  }
+  return { label: raw.trim(), variant: "other" };
+}
 
 /**
  * Represents chapter-level data for the reader page.
@@ -192,6 +288,7 @@ export type ChapterReaderData = {
   previousChapterSlug: string | null;
   nextChapterSlug: string | null;
   imageUrls: string[];
+  seriesStatus: SeriesReaderStatus;
 };
 
 /**
@@ -201,6 +298,48 @@ export type ChapterReaderOptions = {
   /** When true, open at page 1 and skip `ReadingHistory` pageNumber for this visit. */
   fromStart?: boolean;
 };
+
+/**
+ * Loads `SeriesCache.status` or fetches once from the series page meta cache, then normalizes for UI.
+ */
+async function resolveSeriesStatusForReader(
+  sourceId: string,
+  sourceKey: string,
+  seriesSlug: string,
+): Promise<SeriesReaderStatus> {
+  const row = await prisma.seriesCache.findUnique({
+    where: {
+      sourceId_seriesSlug: {
+        sourceId,
+        seriesSlug,
+      },
+    },
+    select: { status: true },
+  });
+  let raw = row?.status?.trim() || null;
+  if (!raw) {
+    const meta = await getCachedSeriesPageMeta(sourceKey, seriesSlug);
+    raw = meta.status?.trim() || null;
+    const data: { synopsis?: string; status?: string } = {};
+    if (meta.synopsis?.trim()) {
+      data.synopsis = meta.synopsis.trim();
+    }
+    if (meta.status?.trim()) {
+      data.status = meta.status.trim();
+    }
+    if (Object.keys(data).length > 0) {
+      await prisma.seriesCache
+        .updateMany({
+          where: { sourceId, seriesSlug },
+          data,
+        })
+        .catch(() => {
+          /* series row may not exist yet */
+        });
+    }
+  }
+  return formatSeriesStatusForReader(raw);
+}
 
 /**
  * Checks whether a cache timestamp is still within the freshness window.
@@ -298,7 +437,7 @@ export async function getSeriesDetailData(
 
   const userScope = { userId: user.id };
 
-  const [cachedChapters, bookmarks, recentReads] = await Promise.all([
+  const [cachedChapters, bookmarks, recentReads, seriesCacheRow] = await Promise.all([
     prisma.chapterCache.findMany({
       where: {
         sourceId: resolved.sourceId,
@@ -310,6 +449,7 @@ export async function getSeriesDetailData(
         title: true,
         chapterUrl: true,
         lastSyncedAt: true,
+        publishedAt: true,
       },
     }),
     prisma.bookmark.findMany({
@@ -340,6 +480,19 @@ export async function getSeriesDetailData(
         chapterSlug: true,
         chapterTitle: true,
         pageNumber: true,
+      },
+    }),
+    prisma.seriesCache.findUnique({
+      where: {
+        sourceId_seriesSlug: {
+          sourceId: resolved.sourceId,
+          seriesSlug,
+        },
+      },
+      select: {
+        synopsis: true,
+        coverImageUrl: true,
+        status: true,
       },
     }),
   ]);
@@ -374,15 +527,57 @@ export async function getSeriesDetailData(
           slug: chapter.slug,
           title: chapter.title,
           url: chapter.url,
+          publishedAt: null,
         }))
       : cachedChapters.map((chapter) => ({
           slug: chapter.chapterSlug,
           title: chapter.title,
           url: chapter.chapterUrl,
+          publishedAt: chapter.publishedAt,
         }));
 
   const liveChapters = sortLiveChaptersReadingOrder(rawLiveChapters);
   const newestChapter = liveChapters[liveChapters.length - 1];
+  const firstChapter = liveChapters[0];
+  const bookmarkOnFirst = firstChapter
+    ? bookmarks.find((b) => b.chapterSlug === firstChapter.slug)
+    : undefined;
+
+  let synopsis = seriesCacheRow?.synopsis?.trim() || null;
+  const cachedStatus = seriesCacheRow?.status?.trim() || null;
+
+  if (!synopsis || !cachedStatus) {
+    const meta = await getCachedSeriesPageMeta(resolved.sourceKey, seriesSlug);
+    if (!synopsis && meta.synopsis?.trim()) {
+      synopsis = meta.synopsis.trim();
+    }
+    const data: { synopsis?: string; status?: string } = {};
+    if (!seriesCacheRow?.synopsis?.trim() && meta.synopsis?.trim()) {
+      data.synopsis = meta.synopsis.trim();
+    }
+    if (!cachedStatus && meta.status?.trim()) {
+      data.status = meta.status.trim();
+    }
+    if (Object.keys(data).length > 0) {
+      await prisma.seriesCache
+        .updateMany({
+          where: { sourceId: resolved.sourceId, seriesSlug },
+          data,
+        })
+        .catch(() => {
+          /* row may not exist yet on first visit */
+        });
+    }
+  }
+
+  const coverImageUrl =
+    resolved.coverImageUrl ?? seriesCacheRow?.coverImageUrl ?? null;
+
+  const seriesStatus = await resolveSeriesStatusForReader(
+    resolved.sourceId,
+    resolved.sourceKey,
+    seriesSlug,
+  );
 
   return {
     seriesSlug: resolved.seriesSlug,
@@ -391,11 +586,22 @@ export async function getSeriesDetailData(
     sourceName: resolved.sourceName,
     adapterName: adapter?.name ?? null,
     sourceBaseUrl: resolved.sourceBaseUrl,
+    synopsis,
+    coverImageUrl,
     latestChapterSlug: newestChapter?.slug ?? null,
     latestChapterTitle: newestChapter?.title ?? null,
-    liveChapters,
+    firstChapterSlug: firstChapter?.slug ?? null,
+    firstChapterTitle: firstChapter?.title ?? null,
+    bookmarkIdForFirstChapter: bookmarkOnFirst?.id ?? null,
+    liveChapters: liveChapters.map((c) => ({
+      slug: c.slug,
+      title: c.title,
+      url: c.url,
+      publishedAt: c.publishedAt ? c.publishedAt.toISOString() : null,
+    })),
     bookmarks,
     recentReads,
+    seriesStatus,
   };
 }
 
@@ -472,6 +678,12 @@ export async function getChapterReaderData(
       chapterSlug,
     );
 
+    const seriesStatus = await resolveSeriesStatusForReader(
+      resolved.sourceId,
+      resolved.sourceKey,
+      seriesSlug,
+    );
+
     return {
       seriesSlug,
       chapterSlug,
@@ -484,6 +696,7 @@ export async function getChapterReaderData(
       previousChapterSlug,
       nextChapterSlug,
       imageUrls: chapterDetail?.imageUrls ?? [],
+      seriesStatus,
     };
   }
 
@@ -499,6 +712,12 @@ export async function getChapterReaderData(
     chapterSlug,
   );
 
+  const seriesStatus = await resolveSeriesStatusForReader(
+    history.source.id,
+    history.source.key,
+    seriesSlug,
+  );
+
   return {
     seriesSlug,
     chapterSlug,
@@ -511,5 +730,6 @@ export async function getChapterReaderData(
     previousChapterSlug,
     nextChapterSlug,
     imageUrls: chapterDetail?.imageUrls ?? [],
+    seriesStatus,
   };
 }

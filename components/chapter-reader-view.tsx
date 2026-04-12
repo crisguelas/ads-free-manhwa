@@ -38,6 +38,7 @@ export type ChapterReaderViewProps = {
   /**
    * When set, visible image index is saved (debounced) to the database for the configured progress user.
    */
+  progressSync?: ReadingProgressSync | null;
   /** Link to next chapter, if any. */
   nextChapterHref?: string | null;
   /** Link to previous chapter, if any. */
@@ -334,8 +335,6 @@ export function ChapterReaderView({
   }
 
   const total = imageUrls.length;
-  const counterLabel =
-    total === 1 ? "Single image in this chapter" : `Image ${visiblePage} of ${total}`;
 
   return (
     <>

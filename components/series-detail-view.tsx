@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
 import type { SeriesDetailData, SeriesReaderStatus } from "@/lib/reader-data";
+import { resolveContinueReadingCarouselLabels } from "@/lib/continue-reading-display";
 import { RemoteCoverImage } from "@/components/remote-cover-image";
 
 type SeriesDetailViewProps = {
@@ -325,7 +326,15 @@ export function SeriesDetailView({ data }: SeriesDetailViewProps) {
             <section className="overflow-hidden rounded-2xl border border-zinc-200/90 bg-white p-5 shadow-sm">
               <h2 className="mb-3 text-sm font-bold text-zinc-900">Recent reading</h2>
               <div className="flex gap-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                {data.recentReads.slice(0, 6).map((r) => (
+                {data.recentReads.slice(0, 6).map((r) => {
+                  const { seriesLine, chapterLine } = resolveContinueReadingCarouselLabels({
+                    seriesTitle: data.seriesTitle,
+                    sourceKey: data.sourceKey,
+                    seriesSlug: data.seriesSlug,
+                    chapterTitle: r.chapterTitle,
+                    chapterSlug: r.chapterSlug,
+                  });
+                  return (
                   <Link
                     key={r.id}
                     href={`/manhwa/${encodeURIComponent(data.seriesSlug)}/chapter/${encodeURIComponent(r.chapterSlug)}`}
@@ -334,19 +343,20 @@ export function SeriesDetailView({ data }: SeriesDetailViewProps) {
                     <div className="overflow-hidden rounded-xl ring-1 ring-zinc-200/80 transition duration-200 group-hover:ring-violet-300/80 group-hover:shadow-md">
                       <RemoteCoverImage
                         src={data.coverImageUrl}
-                        alt={data.seriesTitle}
+                        alt={seriesLine}
                         variant="poster"
                         className="shadow-sm"
                       />
                     </div>
-                    <p className="mt-1.5 line-clamp-2 text-center text-[11px] font-bold leading-snug text-zinc-900" title={data.seriesTitle}>
-                      {data.seriesTitle}
+                    <p className="mt-1.5 line-clamp-2 text-center text-[11px] font-bold leading-snug text-zinc-900" title={seriesLine}>
+                      {seriesLine}
                     </p>
                     <p className="mt-0.5 line-clamp-1 text-center text-[10px] font-medium text-zinc-500">
-                      {r.chapterTitle ?? `Chapter ${r.chapterSlug}`} {r.pageNumber ? `(p.${r.pageNumber})` : ""}
+                      {chapterLine} {r.pageNumber && r.pageNumber > 1 ? `(p.${r.pageNumber})` : ""}
                     </p>
                   </Link>
-                ))}
+                  );
+                })}
               </div>
             </section>
           ) : null}

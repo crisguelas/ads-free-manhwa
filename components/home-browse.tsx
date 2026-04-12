@@ -64,8 +64,8 @@ export function HomeBrowse({ data }: HomeBrowseProps) {
           <div className="flex flex-col gap-10 sm:gap-12">
             <SourceLatestUpdatesSection
               eyebrow={BROWSE_SOURCE_LABELS["asura-scans"]}
-              title="Latest from Asura"
-              description="Pulled from the live browse index (first page order), refreshed periodically. Open any title for chapters and the reader."
+              title="Latest Updates"
+              description=""
               items={data.latestAsura}
               viewAllHref="/browse/asura-scans"
               viewAllLabel="Browse all Asura series"
@@ -73,8 +73,8 @@ export function HomeBrowse({ data }: HomeBrowseProps) {
             />
             <SourceLatestUpdatesSection
               eyebrow={BROWSE_SOURCE_LABELS["flame-scans"]}
-              title="Latest from Flame Comics"
-              description="Ordered by recent site activity from the public browse data. Covers and slugs stay in sync with Flame."
+              title="Latest Updates"
+              description=""
               items={data.latestFlame}
               viewAllHref="/browse/flame-scans"
               viewAllLabel="Browse all Flame series"

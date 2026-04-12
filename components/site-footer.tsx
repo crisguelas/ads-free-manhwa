@@ -18,11 +18,7 @@ export function SiteFooter() {
             <Link href="/" className="transition hover:text-violet-700">
               Home
             </Link>
-            {BROWSE_SOURCE_KEYS.map((key) => (
-              <Link key={key} href={`/browse/${key}`} className="transition hover:text-violet-700">
-                {BROWSE_SOURCE_LABELS[key]}
-              </Link>
-            ))}
+
             <Link href="/bookmarks" className="transition hover:text-violet-700">
               Bookmarks
             </Link>
@@ -30,9 +26,6 @@ export function SiteFooter() {
               Sign in
             </Link>
           </nav>
-          <p className="max-w-md text-xs leading-relaxed text-zinc-500">
-            Reader for a private group. Respect each source site’s terms; pages load from original hosts.
-          </p>
           <p className="text-xs text-zinc-400">© {new Date().getFullYear()} Manhwa Cloud</p>
         </div>
       </div>

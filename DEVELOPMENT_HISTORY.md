@@ -1320,3 +1320,46 @@ Update the "Latest from Asura" and "Latest from Flame Comics" grids on the Home 
 
 ### Verification
 * Ran `npm run build` successfully ensuring data payload typing was safe across caching interfaces.
+
+## Milestone: Modernizing Manhwa Reader UI & Home Dashboard
+
+### Objective
+Clean up redundant dashboard navigation and upgrade the "Recent Reading" section into a premium, graphical component.
+
+### Changes Made
+- **Recent Reading:** Refactored `SeriesDetailView` to use graphical poster cards (`RemoteCoverImage`) with horizontal scrolling, replacing the previous textual list.
+- **Home Cleanup:** Removed the redundant "Browse by Source" row and simplified "Latest Updates" headers to a clean, minimalist design.
+- **Footer Sanitization:** Removed site-branding disclaimers and external source link labels.
+- **Logic Fix:** Corrected chapter ordering in `live-source-browse.ts` to accurately pull the latest chapter from the source array.
+
+### Verification
+- Components render correctly with resolved labels; duplications prevent.
+
+---
+
+## Milestone: Real-time Search Dropdown with Live Covers
+
+### Objective
+Overhaul the header search to provide instant feedback with a premium, glassy dropdown and direct series navigation.
+
+### Changes Made
+- **Search API (`app/api/search/route.ts`):** Created a merged search layer that queries database cache + static highlights and resolves fresh cover art from live site `og:image` targets.
+- **Search UI (`components/browse-ui-client.tsx`):** Refactored search into a stateful component with Glassy Light Theme styling, source-origin labels, and automatic closing on selection/blur.
+- **UX Improvement:** Removed legacy "on-focus page jump" behavior.
+
+### Verification
+- Production build succeeded. All results show accurate titles/covers.
+
+---
+
+## Milestone: Git Authentication Fix (System Identity)
+
+### Objective
+Resolve "Permission denied (publickey)" error when pushing to GitHub from the agent terminal.
+
+### Changes Made
+- Configured local Git to specifically use the Windows System OpenSSH client (`C:/Windows/System32/OpenSSH/ssh.exe`) instead of the bundled Git for Windows client. This allows the Git process to inherit the user's active SSH agent and keys.
+- Command: `git config core.sshCommand "C:/Windows/System32/OpenSSH/ssh.exe"`
+
+### Verification
+- Successfully authenticated and pushed all pending milestones to the remote repository.

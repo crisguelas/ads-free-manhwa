@@ -1184,3 +1184,25 @@ pm run lint.
 
 ---
 
+### 2026-04-12 - Reader footer integration
+
+**Objective**
+- Embed the image progress indicator into the bottom navigation bar and remove the detached floating pill and explanatory text.
+
+**Changes made**
+- components/chapter-reader-view.tsx: Extracted 
+av markup from page shell and inserted it directly into the component. Display {visiblePage} / {total} between the previous and next hooks.
+- pp/manhwa/[id]/chapter/[cid]/page.tsx: Deleted external 
+av shell and bridged 
+extChapterHref and previousChapterHref downward.
+
+**Verification**
+- 
+pm run build, 
+pm run lint.
+
+**Next**
+- None.
+
+---
+

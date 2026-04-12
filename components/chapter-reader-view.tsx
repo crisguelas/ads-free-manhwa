@@ -37,7 +37,10 @@ export type ChapterReaderViewProps = {
   /**
    * When set, visible image index is saved (debounced) to the database for the configured progress user.
    */
-  progressSync?: ReadingProgressSync | null;
+  /** Link to next chapter, if any. */
+  nextChapterHref?: string | null;
+  /** Link to previous chapter, if any. */
+  previousChapterHref?: string | null;
 };
 
 /**
@@ -268,6 +271,8 @@ export function ChapterReaderView({
   sourceName,
   chapterUrl,
   progressSync = null,
+  previousChapterHref = null,
+  nextChapterHref = null,
 }: ChapterReaderViewProps) {
   const pagesRef = useRef<HTMLElement>(null);
   const clampedInitial = Math.min(
@@ -392,17 +397,42 @@ export function ChapterReaderView({
         </button>
       ) : null}
 
-      <div
-        className="pointer-events-none fixed bottom-[calc(4.25rem+env(safe-area-inset-bottom))] left-0 right-0 z-50 flex justify-center px-4 sm:bottom-[calc(4.5rem+env(safe-area-inset-bottom))]"
-        aria-live="polite"
+      <nav
+        className="fixed bottom-0 left-0 right-0 z-40 border-t border-zinc-800 bg-zinc-950/95 px-3 py-2 shadow-[0_-8px_32px_rgba(0,0,0,0.45)] backdrop-blur-md pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2"
+        aria-label="Chapter navigation"
       >
-        <div className="pointer-events-auto max-w-sm rounded-2xl border border-zinc-600/80 bg-zinc-900/95 px-3 py-2 text-center shadow-lg shadow-black/40 backdrop-blur-md">
-          <p className="text-[11px] font-semibold leading-tight text-zinc-100">{counterLabel}</p>
-          <p className="mt-0.5 text-[10px] leading-snug text-zinc-400">
-            One vertical strip — resume is stored as image {visiblePage} of {total}
-          </p>
+        <div className="mx-auto flex max-w-3xl items-center gap-2 sm:gap-3">
+          <Link
+            href={previousChapterHref ?? "#"}
+            aria-disabled={!previousChapterHref}
+            className={`flex min-h-[2.75rem] flex-1 items-center justify-center rounded-xl text-sm font-semibold transition ${
+              previousChapterHref
+                ? "border border-zinc-600 bg-zinc-900 text-zinc-100 hover:border-violet-500/50 hover:bg-zinc-800"
+                : "cursor-not-allowed border border-transparent bg-zinc-900/40 text-zinc-600"
+            }`}
+          >
+            ← Prev
+          </Link>
+
+          <div className="flex shrink-0 min-w-[5.5rem] items-center justify-center">
+            <span className="text-[11px] font-semibold tracking-wide text-zinc-300 sm:text-xs">
+              {visiblePage} / {total}
+            </span>
+          </div>
+
+          <Link
+            href={nextChapterHref ?? "#"}
+            aria-disabled={!nextChapterHref}
+            className={`flex min-h-[2.75rem] flex-1 items-center justify-center rounded-xl text-sm font-semibold transition ${
+              nextChapterHref
+                ? "bg-violet-600 text-white shadow-lg shadow-violet-900/40 hover:bg-violet-500"
+                : "cursor-not-allowed bg-zinc-900/40 text-zinc-600"
+            }`}
+          >
+            Next →
+          </Link>
         </div>
-      </div>
+      </nav>
     </>
   );
 }

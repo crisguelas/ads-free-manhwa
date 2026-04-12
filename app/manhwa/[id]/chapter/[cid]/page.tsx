@@ -119,46 +119,18 @@ export default async function ChapterReaderPage({
             chapterTitle: data.chapterTitle,
             chapterUrl: data.chapterUrl,
           }}
+          previousChapterHref={
+            data.previousChapterSlug
+              ? `/manhwa/${encodeURIComponent(data.seriesSlug)}/chapter/${encodeURIComponent(data.previousChapterSlug)}`
+              : null
+          }
+          nextChapterHref={
+            data.nextChapterSlug
+              ? `/manhwa/${encodeURIComponent(data.seriesSlug)}/chapter/${encodeURIComponent(data.nextChapterSlug)}`
+              : null
+          }
         />
       </main>
-
-      <nav
-        className="fixed bottom-0 left-0 right-0 z-40 border-t border-zinc-800 bg-zinc-950/95 px-3 py-2 shadow-[0_-8px_32px_rgba(0,0,0,0.45)] backdrop-blur-md pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2"
-        aria-label="Chapter navigation"
-      >
-        <div className="mx-auto flex max-w-3xl gap-2 sm:gap-3">
-          <Link
-            href={
-              data.previousChapterSlug
-                ? `/manhwa/${encodeURIComponent(data.seriesSlug)}/chapter/${encodeURIComponent(data.previousChapterSlug)}`
-                : "#"
-            }
-            aria-disabled={!data.previousChapterSlug}
-            className={`flex min-h-[2.75rem] flex-1 items-center justify-center rounded-xl text-sm font-semibold transition ${
-              data.previousChapterSlug
-                ? "border border-zinc-600 bg-zinc-900 text-zinc-100 hover:border-violet-500/50 hover:bg-zinc-800"
-                : "cursor-not-allowed border border-transparent bg-zinc-900/40 text-zinc-600"
-            }`}
-          >
-            ← Previous
-          </Link>
-          <Link
-            href={
-              data.nextChapterSlug
-                ? `/manhwa/${encodeURIComponent(data.seriesSlug)}/chapter/${encodeURIComponent(data.nextChapterSlug)}`
-                : "#"
-            }
-            aria-disabled={!data.nextChapterSlug}
-            className={`flex min-h-[2.75rem] flex-1 items-center justify-center rounded-xl text-sm font-semibold transition ${
-              data.nextChapterSlug
-                ? "bg-violet-600 text-white shadow-lg shadow-violet-900/40 hover:bg-violet-500"
-                : "cursor-not-allowed bg-zinc-900/40 text-zinc-600"
-            }`}
-          >
-            Next →
-          </Link>
-        </div>
-      </nav>
     </div>
   );
 }

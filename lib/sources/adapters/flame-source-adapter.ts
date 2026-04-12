@@ -145,10 +145,15 @@ function parseFlameSeriesChaptersFromNextData(
       continue;
     }
     let title: string;
-    if (typeof c.title === "string" && c.title.trim().length > 0) {
-      title = decodeBasicHtmlEntities(c.title.trim());
-    } else if (typeof c.chapter === "string" && c.chapter.trim().length > 0) {
-      title = `Chapter ${c.chapter.trim()}`;
+    const chapStr = typeof c.chapter === "string" ? c.chapter.trim() : "";
+    const rawTitle = typeof c.title === "string" ? c.title.trim() : "";
+
+    if (chapStr.length > 0 && rawTitle.length > 0) {
+      title = `Chapter ${chapStr} - ${decodeBasicHtmlEntities(rawTitle)}`;
+    } else if (rawTitle.length > 0) {
+      title = decodeBasicHtmlEntities(rawTitle);
+    } else if (chapStr.length > 0) {
+      title = `Chapter ${chapStr}`;
     } else {
       title = `Chapter ${token}`;
     }

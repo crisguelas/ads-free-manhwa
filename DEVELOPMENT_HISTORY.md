@@ -1165,3 +1165,22 @@ pm run lint.
 
 ---
 
+### 2026-04-12 - Fix Flame Comics chapter sorting and missing chapter numbers
+
+**Objective**
+- Fix chapter lists from Flame Comics omitting chapter numbers (e.g. "Dokja's Fable (Part 1)") which broke default list sorting and resulted in jumbled ordering.
+
+**Changes made**
+- lib/sources/adapters/flame-source-adapter.ts: Updated parseFlameSeriesChaptersFromNextData to append c.title to c.chapter resulting in correctly structured standard titles like Chapter 303 - Dokja's Fable (Part 5). 
+- Nixed local chapter caches.
+
+**Verification**
+- Flame database adapter sorts properly by the "Chapter X" prefix. 
+pm run build, 
+pm run lint.
+
+**Next**
+- None.
+
+---
+

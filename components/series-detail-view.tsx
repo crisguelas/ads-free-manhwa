@@ -142,19 +142,18 @@ export function SeriesDetailView({ data }: SeriesDetailViewProps) {
       </Link>
 
       <header className="flex flex-col gap-6 border-b border-zinc-200/90 pb-8 sm:flex-row sm:items-start sm:gap-8">
-        <div className="relative mx-auto w-[8.5rem] shrink-0 overflow-hidden rounded-lg shadow-lg shadow-zinc-900/10 ring-1 ring-zinc-200/80 sm:mx-0 sm:w-36">
-          <RemoteCoverImage
-            src={data.coverImageUrl}
-            alt={data.seriesTitle}
-            variant="poster"
-            className="shadow-none ring-0"
-          />
-          <div
-            className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center bg-gradient-to-t from-black/80 via-black/45 to-transparent px-2 pb-2 pt-7"
-            aria-hidden
-          >
+        <div className="flex shrink-0 flex-col gap-3">
+          <div className="relative mx-auto w-[8.5rem] overflow-hidden rounded-lg shadow-lg shadow-zinc-900/10 ring-1 ring-zinc-200/80 sm:mx-0 sm:w-36">
+            <RemoteCoverImage
+              src={data.coverImageUrl}
+              alt={data.seriesTitle}
+              variant="poster"
+              className="shadow-none ring-0"
+            />
+          </div>
+          <div className="flex justify-center sm:justify-start">
             <span
-              className={`max-w-full truncate rounded-md px-2.5 py-1 text-center text-[10px] font-bold uppercase tracking-wide sm:text-[11px] ${seriesDetailStatusStripClass(data.seriesStatus.variant)}`}
+              className={`max-w-full truncate rounded-md px-3 py-1 text-center text-[10px] font-bold uppercase tracking-wide sm:text-[11px] ${seriesDetailStatusStripClass(data.seriesStatus.variant)}`}
               title="Series status from source"
             >
               {data.seriesStatus.label}

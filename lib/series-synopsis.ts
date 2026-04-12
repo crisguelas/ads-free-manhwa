@@ -102,7 +102,8 @@ export function extractFlameSynopsisFromSeriesHtml(html: string): string | null 
  * Best-effort scan status from Asura series HTML (badges / visible labels).
  */
 export function extractAsuraSeriesStatusFromHtml(html: string): string | null {
-  const m = html.match(
+  const safeHtml = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "");
+  const m = safeHtml.match(
     /\b(ongoing|completed|complete|hiatus|dropped|finished)\b/i,
   );
   return m?.[1] ? m[1].trim() : null;

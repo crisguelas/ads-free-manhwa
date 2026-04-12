@@ -1140,3 +1140,28 @@ This file tracks implementation steps so future developers can understand what w
 
 **Next**
 - None unless sources emit non-`Chapter n` patterns (e.g. “Episode”).
+### 2026-04-12 - Fix Asura status parsing and layout  
+  
+**Objective**  
+- Fix bug where all Asura series show as \" "Finished\ and move status pill below poster.  
+  
+**Changes made**  
+### 2026-04-12 - Fix Asura status parsing and layout
+
+**Objective**
+- Fix bug where all Asura series show as "Finished" and move status pill below poster.
+
+**Changes made**
+- lib/series-synopsis.ts: Strip <script> tags before extractAsuraSeriesStatusFromHtml so eadyState==="complete" doesn't match.
+- components/series-detail-view.tsx: Move status pill layout below RemoteCoverImage.
+
+**Verification**
+- 
+pm run build, 
+pm run lint.
+
+**Next**
+- None.
+
+---
+

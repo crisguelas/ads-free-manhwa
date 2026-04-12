@@ -304,7 +304,7 @@ export function SeriesDetailView({ data }: SeriesDetailViewProps) {
       </section>
 
       {(data.bookmarks.length > 0 || data.recentReads.length > 0) && (
-        <div className="mt-10 grid gap-6 sm:grid-cols-2">
+        <div className="mt-10 grid items-start gap-6 sm:grid-cols-2">
           {data.bookmarks.length > 0 ? (
             <section className="rounded-2xl border border-zinc-200/90 bg-white p-5 shadow-sm">
               <h2 className="text-sm font-bold text-zinc-900">Your bookmarks</h2>

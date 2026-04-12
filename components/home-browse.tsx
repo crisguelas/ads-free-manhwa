@@ -46,21 +46,6 @@ export function HomeBrowse({ data }: HomeBrowseProps) {
         ) : null}
 
         <div id="browse" className="scroll-mt-28">
-          <div className="mb-10 rounded-2xl border border-zinc-200/80 bg-white/80 px-5 py-5 shadow-sm shadow-zinc-900/[0.03] backdrop-blur-sm sm:px-6">
-            <p className="text-xs font-medium text-zinc-500">Browse the full catalog by source</p>
-            <div className="mt-4 flex flex-wrap gap-2.5">
-              {BROWSE_SOURCE_KEYS.map((key) => (
-                <Link
-                  key={key}
-                  href={`/browse/${key}`}
-                  className="rounded-full border border-zinc-200 bg-white px-4 py-2 text-sm font-semibold text-zinc-800 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-900 hover:shadow-md"
-                >
-                  {BROWSE_SOURCE_LABELS[key]}
-                </Link>
-              ))}
-            </div>
-          </div>
-
           <div className="flex flex-col gap-10 sm:gap-12">
             <SourceLatestUpdatesSection
               eyebrow={BROWSE_SOURCE_LABELS["asura-scans"]}

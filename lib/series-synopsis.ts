@@ -103,10 +103,20 @@ export function extractFlameSynopsisFromSeriesHtml(html: string): string | null 
  */
 export function extractAsuraSeriesStatusFromHtml(html: string): string | null {
   const safeHtml = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "");
+  
+  // High confidence: adjacent to "Status" label
   const m = safeHtml.match(
-    /\b(ongoing|completed|complete|hiatus|dropped|finished)\b/i,
+    /Status(?:<\/?[^>]+>|\s|&nbsp;|:)*(ongoing|completed|complete|hiatus|dropped|finished)\b/i,
   );
-  return m?.[1] ? m[1].trim() : null;
+  if (m?.[1]) return m[1].trim();
+
+  // Fallback: bounded tightly by tags (typical badge layout)
+  const m2 = safeHtml.match(
+    />\s*(ongoing|completed|hiatus|dropped|finished)\s*</i,
+  );
+  if (m2?.[1]) return m2[1].trim();
+
+  return null;
 }
 
 /**
@@ -178,7 +188,7 @@ export function getCachedSeriesPageMeta(
       }
       return { synopsis: null, status: null };
     },
-    ["series-page-meta", "v1", sourceKey, seriesSlug],
+    ["series-page-meta", "v2", sourceKey, seriesSlug],
     { revalidate: 86_400 },
   )();
 }

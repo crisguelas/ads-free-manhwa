@@ -1224,3 +1224,22 @@ pm run lint.
 
 ---
 
+### 2026-04-12 - Force flush Asura Scans cached series statuses
+
+**Objective**
+- Ensure Asura's newly fixed parser logic propagates to the UI instead of returning old cached "Finished" results.
+- Hardened Asura's regex status parser.
+
+**Changes made**
+- lib/series-synopsis.ts: Bumped the cache key version in getCachedSeriesPageMeta from 1 to 2 to aggressively reset Next.js global fetch caching across all routes. Tightened regex so it's impossible to falsely trigger on unrelated text or classes.
+
+**Verification**
+- 
+pm run build, 
+pm run lint. Cleared database records successfully via node execution previously.
+
+**Next**
+- None.
+
+---
+

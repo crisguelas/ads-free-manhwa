@@ -15,8 +15,11 @@ type LatestUpdateBlockProps = { series: CatalogHighlight };
 function LatestUpdateBlock({ series }: LatestUpdateBlockProps) {
   const base = `/manhwa/${encodeURIComponent(series.seriesSlug)}`;
   const line2 = series.subtitle ?? `Latest from ${series.sourceName}`;
-  const line3 =
-    series.genres.length > 0 ? series.genres.slice(0, 4).join(" · ") : "Chapters & reader";
+  const line3 = series.latestChapter
+    ? series.latestChapter.title
+    : series.genres.length > 0
+      ? series.genres.slice(0, 4).join(" · ")
+      : "Chapters & reader";
 
   return (
     <div className="group/row flex gap-3.5 rounded-xl border border-transparent p-2 transition duration-200 hover:border-zinc-200/80 hover:bg-zinc-50/90 md:gap-4">

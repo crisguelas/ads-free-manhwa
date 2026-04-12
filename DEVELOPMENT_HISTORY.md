@@ -1277,3 +1277,46 @@ pm run lint && npm run build passed successfully.
 
 ---
 
+
+## Milestone: Fix Asura Chapter Image Order
+
+### Objective
+Fix scrambled image order for Asura chapters.
+
+### Changes Made
+* Updated `extractChapterImages` in `asura-source-adapter.ts` to parse the RSC `"pages"` payload first, preserving the correct server-defined reading order. The previous numeric-alphabetical sort scrambled the hash-based filenames.
+* Maintained the original regex extraction as a fallback.
+* Exposed `extractImagesFromRscPagesPayload` in `ASURA_TEST_UTILS` and added regression tests for correct order preservation.
+
+### Verification
+* Added unit tests for order preservation.
+* All adapter tests pass, full suite passes, Next.js build succeeds.
+* Confirmed Asura chapter pages now correctly sequence panels.
+
+## Milestone: Finalize Bookmarks Page to Industry Standard
+
+### Objective
+Redesign the simple bookmarks list into a premium, interactive component featuring full series metadata (covers, accurate titles) and inline deletion capabilities without requiring full page reloading.
+
+### Changes Made
+* Enhanced `getBookmarksForUser` in `lib/bookmarks-page-data.ts` to efficiently pre-fetch `Follow` and `SeriesCache` records to attach resolving `seriesTitle` and `coverImageUrl` dynamically.
+* Implemented `bookmark-list-row.tsx` bringing in a compact `RemoteCoverImage` thumbnail alongside clear chapter tracking labels and a soft-UX "Remove" Trash button hook invoking `DELETE /api/bookmarks`.
+* Implemented `bookmark-list-client.tsx` to act as the primary state wrapper allowing smooth unmounting of deleted bookmarks and rendering an empty-state block immediately when the list becomes zero.
+* Upgraded page container in `app/bookmarks/page.tsx` aligning the core layout to modern, mobile-friendly design practices (drop shadows, padded headers).
+
+### Verification
+* TypeScript types align.
+* Next.js build passes.
+
+## Milestone: Latest Updates Grid Chapter Rendering
+
+### Objective
+Update the "Latest from Asura" and "Latest from Flame Comics" grids on the Home Dashboard to display the most recently uploaded chapter name (e.g. Chapter 123) rather than a generic "Chapters & reader" fallback placeholder, mirroring the actual host sites.
+
+### Changes Made
+* Extended `CatalogHighlight` in `lib/featured-series.ts` to accept a `latestChapter` metadata snippet.
+* Restructured `getHomeLatestAsuraHighlights` and `getHomeLatestFlameHighlights` inside `lib/live-source-browse.ts` to import `getSourceAdapter` and query the `listSeriesChapters()` module asyncronysly for every curated row.
+* Updated `components/browse-ui-client.tsx` (`LatestUpdateBlock`) to render the newest chapter dynamically.
+
+### Verification
+* Ran `npm run build` successfully ensuring data payload typing was safe across caching interfaces.

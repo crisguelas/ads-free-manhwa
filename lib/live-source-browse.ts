@@ -6,6 +6,7 @@ import type { BrowseSourceKey } from "@/lib/browse-constants";
 import { isFlameWebNovelSeriesSlug } from "@/lib/flame-series-slug";
 import { decodeBasicHtmlEntities } from "@/lib/html-entities";
 import { isAllowedScanlationFormatLabel } from "@/lib/scanlation-format-filter";
+import { getSourceAdapter } from "@/lib/sources/registry";
 
 const ASURA_BASE_URL = "https://asurascans.com";
 const FLAME_BROWSE_URL = "https://flamecomics.xyz/browse";
@@ -373,7 +374,28 @@ export function getHomeLatestAsuraHighlights(): Promise<CatalogHighlight[]> {
       if (filtered.length === 0) {
         return fallbackAsuraLatestHighlights();
       }
-      return filtered.map(liveRowToHighlight);
+      
+      const highlights = filtered.map(liveRowToHighlight);
+      const adapter = getSourceAdapter("asura-scans");
+      if (adapter) {
+        await Promise.all(
+          highlights.map(async (h) => {
+            try {
+              const chapters = await adapter.listSeriesChapters(h.seriesSlug);
+              if (chapters.length > 0) {
+                const latest = chapters[chapters.length - 1];
+                h.latestChapter = {
+                  title: latest.chapterLabel || latest.title,
+                  slug: latest.slug,
+                };
+              }
+            } catch {
+              // Ignore timeouts or parsing failures silently for home card loading
+            }
+          })
+        );
+      }
+      return highlights;
     },
     ["home-latest-asura", "v3"],
     { revalidate: HOME_LATEST_REVALIDATE_SEC },
@@ -396,7 +418,28 @@ export function getHomeLatestFlameHighlights(): Promise<CatalogHighlight[]> {
       if (rows.length === 0) {
         return fallbackFlameLatestHighlights();
       }
-      return rows.map(liveRowToHighlight);
+      
+      const highlights = rows.map(liveRowToHighlight);
+      const adapter = getSourceAdapter("flame-scans");
+      if (adapter) {
+        await Promise.all(
+          highlights.map(async (h) => {
+            try {
+              const chapters = await adapter.listSeriesChapters(h.seriesSlug);
+              if (chapters.length > 0) {
+                const latest = chapters[chapters.length - 1];
+                h.latestChapter = {
+                  title: latest.chapterLabel || latest.title,
+                  slug: latest.slug,
+                };
+              }
+            } catch {
+              // Ignore timeouts or parsing failures silently for home card loading
+            }
+          })
+        );
+      }
+      return highlights;
     },
     ["home-latest-flame", "v5"],
     { revalidate: HOME_LATEST_REVALIDATE_SEC },

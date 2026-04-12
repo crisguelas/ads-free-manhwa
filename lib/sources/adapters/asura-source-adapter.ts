@@ -237,9 +237,44 @@ function detectAuthGuard(html: string): boolean {
 }
 
 /**
+ * Attempts to extract chapter image URLs from Asura's RSC "pages" payload, preserving
+ * the server-defined reading order. The payload format is:
+ *   "pages":[1,[[0,{"url":[0,"https://..."]}],...]],"prevChapter"
+ * Returns null when the structured payload is absent so the caller can fall back.
+ */
+function extractImagesFromRscPagesPayload(html: string): string[] | null {
+  // Decode HTML entities so the JSON is parseable
+  const decoded = html.replace(/&quot;/g, '"').replace(/&amp;/g, "&");
+
+  // Match the RSC tuple array that follows "pages":[1, up to the closing ],"prevChapter"
+  const match = decoded.match(/"pages":\[1,(\[[\s\S]*?\])\],"prevChapter"/);
+  if (!match) {
+    return null;
+  }
+
+  try {
+    // Each entry is [0, { url: [0, "https://..."] }]
+    const entries: Array<[number, { url: [number, string] }]> = JSON.parse(match[1]);
+    const urls = entries.map((entry) => entry[1]?.url?.[1]).filter((u): u is string => !!u);
+    return urls.length > 0 ? urls : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Extracts unique image URLs from multiple HTML patterns used in chapter pages.
+ * Prefers the structured RSC "pages" payload (which carries correct reading order)
+ * and falls back to regex scanning when the payload is absent.
  */
 function extractChapterImages(html: string): string[] {
+  // Primary: parse the RSC pages payload for correct reading order
+  const rscImages = extractImagesFromRscPagesPayload(html);
+  if (rscImages) {
+    return rscImages;
+  }
+
+  // Fallback: scan decoded HTML for image URLs and sort numerically
   const cleanHtml = html.replace(/&quot;/ig, '"').replace(/\\\//g, '/');
 
   const patterns = [
@@ -414,6 +449,7 @@ export class AsuraSourceAdapter implements SourceAdapter {
 export const ASURA_TEST_UTILS = {
   extractChapterSummaries,
   extractChapterImages,
+  extractImagesFromRscPagesPayload,
   detectAuthGuard,
   parseChapterNumber,
 };

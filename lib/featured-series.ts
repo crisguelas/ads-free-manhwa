@@ -14,6 +14,11 @@ export type CatalogHighlight = {
   genres: string[];
   /** Shown under title on cards (e.g. suggested starting point). */
   subtitle?: string;
+  /** Extracted latest chapter for the home page latest updates grid. */
+  latestChapter?: {
+    title: string;
+    slug?: string;
+  };
 };
 
 /**

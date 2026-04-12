@@ -78,3 +78,43 @@ test("parser failure metrics increment in observability state", () => {
 
   assert.equal(after.parserFailures.length, before.parserFailures.length + 1);
 });
+
+/**
+ * Verifies the RSC pages payload parser extracts image URLs in the server-defined order.
+ * This is critical for Asura's hex-hash filenames which cannot be sorted numerically.
+ */
+test("extractImagesFromRscPagesPayload returns images in correct reading order", async () => {
+  const html = await loadFixture("asura-chapter-rsc-pages.fixture.html");
+  const imageUrls = ASURA_TEST_UTILS.extractImagesFromRscPagesPayload(html);
+
+  assert.deepEqual(imageUrls, [
+    "https://cdn.asurascans.com/asura-images/chapters/test-series/5/aa1111.webp",
+    "https://cdn.asurascans.com/asura-images/chapters/test-series/5/bb2222.webp",
+    "https://cdn.asurascans.com/asura-images/chapters/test-series/5/cc3333.webp",
+  ]);
+});
+
+/**
+ * Verifies extractChapterImages prefers the RSC payload path over the regex fallback.
+ * With hex-hash filenames the regex fallback would sort them alphabetically (wrong order).
+ */
+test("extractChapterImages uses RSC payload when present, preserving reading order", async () => {
+  const html = await loadFixture("asura-chapter-rsc-pages.fixture.html");
+  const imageUrls = ASURA_TEST_UTILS.extractChapterImages(html);
+
+  // Order must match the RSC payload sequence, not alphabetical hash sort
+  assert.deepEqual(imageUrls, [
+    "https://cdn.asurascans.com/asura-images/chapters/test-series/5/aa1111.webp",
+    "https://cdn.asurascans.com/asura-images/chapters/test-series/5/bb2222.webp",
+    "https://cdn.asurascans.com/asura-images/chapters/test-series/5/cc3333.webp",
+  ]);
+});
+
+/**
+ * Verifies extractImagesFromRscPagesPayload returns null for HTML without the payload.
+ */
+test("extractImagesFromRscPagesPayload returns null when RSC payload is absent", async () => {
+  const html = await loadFixture("asura-chapter-images.fixture.html");
+  const result = ASURA_TEST_UTILS.extractImagesFromRscPagesPayload(html);
+  assert.equal(result, null);
+});

@@ -322,21 +322,32 @@ export function SeriesDetailView({ data }: SeriesDetailViewProps) {
             </section>
           ) : null}
           {data.recentReads.length > 0 ? (
-            <section className="rounded-2xl border border-zinc-200/90 bg-white p-5 shadow-sm">
-              <h2 className="text-sm font-bold text-zinc-900">Recent reading</h2>
-              <ul className="mt-3 space-y-2 text-sm">
+            <section className="overflow-hidden rounded-2xl border border-zinc-200/90 bg-white p-5 shadow-sm">
+              <h2 className="mb-3 text-sm font-bold text-zinc-900">Recent reading</h2>
+              <div className="flex gap-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 {data.recentReads.slice(0, 6).map((r) => (
-                  <li key={r.id}>
-                    <Link
-                      href={`/manhwa/${encodeURIComponent(data.seriesSlug)}/chapter/${encodeURIComponent(r.chapterSlug)}`}
-                      className="font-medium text-zinc-800 hover:underline"
-                    >
-                      {r.chapterTitle ?? r.chapterSlug}
-                    </Link>
-                    <span className="ml-1 text-xs text-zinc-500">p.{r.pageNumber ?? 1}</span>
-                  </li>
+                  <Link
+                    key={r.id}
+                    href={`/manhwa/${encodeURIComponent(data.seriesSlug)}/chapter/${encodeURIComponent(r.chapterSlug)}`}
+                    className="group flex w-[110px] shrink-0 snap-start flex-col sm:w-[120px]"
+                  >
+                    <div className="overflow-hidden rounded-xl ring-1 ring-zinc-200/80 transition duration-200 group-hover:ring-violet-300/80 group-hover:shadow-md">
+                      <RemoteCoverImage
+                        src={data.coverImageUrl}
+                        alt={data.seriesTitle}
+                        variant="poster"
+                        className="shadow-sm"
+                      />
+                    </div>
+                    <p className="mt-1.5 line-clamp-2 text-center text-[11px] font-bold leading-snug text-zinc-900" title={data.seriesTitle}>
+                      {data.seriesTitle}
+                    </p>
+                    <p className="mt-0.5 line-clamp-1 text-center text-[10px] font-medium text-zinc-500">
+                      {r.chapterTitle ?? `Chapter ${r.chapterSlug}`} {r.pageNumber ? `(p.${r.pageNumber})` : ""}
+                    </p>
+                  </Link>
                 ))}
-              </ul>
+              </div>
             </section>
           ) : null}
         </div>

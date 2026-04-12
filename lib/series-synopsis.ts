@@ -103,7 +103,7 @@ export function extractFlameSynopsisFromSeriesHtml(html: string): string | null 
  */
 export function extractAsuraSeriesStatusFromHtml(html: string): string | null {
   const safeHtml = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "");
-  
+
   // High confidence: adjacent to "Status" label
   const m = safeHtml.match(
     /Status(?:<\/?[^>]+>|\s|&nbsp;|:)*(ongoing|completed|complete|hiatus|dropped|finished)\b/i,

@@ -1206,3 +1206,21 @@ pm run lint.
 
 ---
 
+### 2026-04-12 - Remove chapter reader explanatory text
+
+**Objective**
+- Remove the text stating 'Resumed near image X — all images load below in one scroll.' from the top of the chapter screen.
+
+**Changes made**
+- pp/manhwa/[id]/chapter/[cid]/page.tsx: Deleted the conditional <p> block from the reader header.
+
+**Verification**
+- 
+pm run build, 
+pm run lint.
+
+**Next**
+- None.
+
+---
+

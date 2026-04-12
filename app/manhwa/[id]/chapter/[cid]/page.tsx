@@ -94,15 +94,6 @@ export default async function ChapterReaderPage({
             </Link>
           ) : null}
         </div>
-        {fromStart ? (
-          <p className="border-t border-zinc-800 bg-amber-950/50 px-3 py-1.5 text-center text-[10px] font-medium text-amber-100/95 sm:text-xs">
-            Reading from the top — saved scroll position is ignored for this visit.
-          </p>
-        ) : data.imageUrls.length > 0 ? (
-          <p className="border-t border-zinc-800 px-3 py-1.5 text-center text-[10px] text-zinc-500 sm:text-xs">
-            Resumed near image {data.pageNumber} — all images load below in one scroll.
-          </p>
-        ) : null}
       </header>
 
       <main className="mx-auto w-full max-w-3xl px-2 pb-28 pt-3 sm:px-4 sm:pb-32 sm:pt-4">

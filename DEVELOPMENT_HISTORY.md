@@ -1243,3 +1243,19 @@ pm run lint. Cleared database records successfully via node execution previously
 
 ---
 
+### 2026-04-12 - Fix Asura image extraction failure for Astro Island payloads
+
+**Objective**
+- Fix a bug where Asura chapters loaded zero images because they migrated payload arrays behind HTML entity encodings (&quot;).
+
+**Changes made**
+- lib/sources/adapters/asura-source-adapter.ts: Added HTML sanitization regex replacement .replace(/&quot;/ig, '"').replace(/\\\//g, '/') prior to extracting URLs so boundary markers strictly match un-escaped standard layouts.
+
+**Verification**
+- Scanned Genius Prismatic Mage Chapter 68 via un_command scraping pipeline yielding full 20 WebP objects successfully. Built successfully.
+
+**Next**
+- None.
+
+---
+

@@ -240,15 +240,17 @@ function detectAuthGuard(html: string): boolean {
  * Extracts unique image URLs from multiple HTML patterns used in chapter pages.
  */
 function extractChapterImages(html: string): string[] {
+  const cleanHtml = html.replace(/&quot;/ig, '"').replace(/\\\//g, '/');
+
   const patterns = [
     /(https?:\/\/[^"'\\\s>]+?\.(?:jpg|jpeg|png|webp))(?:["'\\\s>])/gi,
     /(?:src|data-src|content)\s*=\s*["'](https?:\/\/[^"']+?\.(?:jpg|jpeg|png|webp))["']/gi,
-    /https?:\\\/\\\/[^"']+?\.(?:jpg|jpeg|png|webp)/gi,
+    /https?:\/\/[^"']+?\.(?:jpg|jpeg|png|webp)/gi,
   ];
   const urls = new Set<string>();
 
   for (const pattern of patterns) {
-    for (const match of html.matchAll(pattern)) {
+    for (const match of cleanHtml.matchAll(pattern)) {
       const value = (match[1] ?? match[0]).replaceAll("\\/", "/");
       if (!value.includes("avatar") && !value.includes("logo")) {
         urls.add(value);

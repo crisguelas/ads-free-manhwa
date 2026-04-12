@@ -8,6 +8,7 @@ import {
   useState,
   type RefObject,
 } from "react";
+import Link from "next/link";
 
 /**
  * Identifies the chapter and source for `POST /api/reading-progress` (scroll → `ReadingHistory`).

@@ -99,7 +99,7 @@ export async function resolveSeriesContextForUser(
 ): Promise<ResolvedSeriesContext | null> {
   const followRows = await prisma.follow.findMany({
     where: {
-      seriesSlug,
+      seriesSlug: { equals: seriesSlug, mode: "insensitive" },
       userId,
     },
     select: {
@@ -133,7 +133,10 @@ export async function resolveSeriesContextForUser(
   // Next, check our persistent Database Cache. 
   // This handles everything found via Search or older browse activity.
   const cachedHit = await prisma.seriesCache.findFirst({
-    where: { seriesSlug },
+    where: {
+      seriesSlug: { equals: seriesSlug, mode: "insensitive" },
+      source: { isEnabled: true },
+    },
     include: { source: { select: { id: true, key: true, name: true, baseUrl: true } } },
   });
 

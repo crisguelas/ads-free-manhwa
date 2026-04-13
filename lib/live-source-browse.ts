@@ -8,7 +8,8 @@ import { decodeBasicHtmlEntities } from "@/lib/html-entities";
 import { isAllowedScanlationFormatLabel } from "@/lib/scanlation-format-filter";
 import { getSourceAdapter } from "@/lib/sources/registry";
 
-import { fetchHtml } from "@/lib/fetch-utils";
+import { fetchHtml, fetchHtmlWithOptions } from "@/lib/fetch-utils";
+import { fetchFlameSeriesOverviewHomeExtras } from "@/lib/sources/adapters/flame-source-adapter";
 const ASURA_BASE_URL = "https://asurascans.com";
 const FLAME_BROWSE_URL = "https://flamecomics.xyz/browse";
 /**
@@ -374,7 +375,10 @@ async function fetchFlameBrowseHtml(): Promise<string> {
     `${FLAME_BROWSE_URL}?_=${Date.now()}`,
   ];
   for (const url of attemptUrls) {
-    const html = await fetchHtml(url);
+    const html = await fetchHtmlWithOptions(url, {
+      timeoutMs: 22_000,
+      referer: "https://flamecomics.xyz/",
+    });
     if (!html) {
       continue;
     }
@@ -412,7 +416,8 @@ async function enrichFlameRowsWithLatestChapterLabels(
     return rows;
   }
   const out = [...rows];
-  const CONCURRENCY = 6;
+  /** Fewer parallel series-page fetches so Flame upstream is less likely to throttle or time out on Vercel. */
+  const CONCURRENCY = 4;
   for (let i = 0; i < out.length; i += CONCURRENCY) {
     const chunk = out.slice(i, i + CONCURRENCY);
     const resolved = await Promise.all(
@@ -420,15 +425,23 @@ async function enrichFlameRowsWithLatestChapterLabels(
         if (row.latestChapterLabel?.trim()) {
           return row;
         }
-        const chapters = await adapter.listSeriesChapters(row.seriesSlug);
-        if (chapters.length === 0) {
-          return row;
-        }
-        const latest = chapters[chapters.length - 1];
-        return {
+        const extras = await fetchFlameSeriesOverviewHomeExtras(row.seriesSlug);
+        let merged: LiveBrowseRow = {
           ...row,
-          latestChapterLabel: latest?.title?.trim() || row.latestChapterLabel,
+          coverImageUrl: extras.coverImageUrl || row.coverImageUrl,
+          latestChapterLabel: extras.latestChapterTitle ?? row.latestChapterLabel,
         };
+        if (!merged.latestChapterLabel?.trim()) {
+          const chapters = await adapter.listSeriesChapters(row.seriesSlug);
+          if (chapters.length > 0) {
+            const latest = chapters[chapters.length - 1];
+            merged = {
+              ...merged,
+              latestChapterLabel: latest?.title?.trim() || merged.latestChapterLabel,
+            };
+          }
+        }
+        return merged;
       }),
     );
     for (let j = 0; j < resolved.length; j += 1) {
@@ -564,7 +577,7 @@ export function getHomeLatestFlameHighlights(): Promise<CatalogHighlight[]> {
       rows = await enrichFlameRowsWithLatestChapterLabels(rows);
       return rows.map(liveRowToHighlight);
     },
-    ["home-latest-flame", "v7"],
+    ["home-latest-flame", "v8"],
     { revalidate: HOME_LATEST_REVALIDATE_SEC },
   )();
 }
@@ -640,7 +653,7 @@ function getCachedFlameLiveRows(): Promise<LiveBrowseRow[]> {
       }
       return rows;
     },
-    ["live-flame-browse-series", "v7"],
+    ["live-flame-browse-series", "v8"],
     { revalidate: 3600 },
   )();
 }

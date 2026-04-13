@@ -1,4 +1,4 @@
-import { fetchHtml } from "@/lib/fetch-utils";
+import { fetchHtml, fetchHtmlWithOptions } from "@/lib/fetch-utils";
 import {
   type ParsedFlameSeriesSlug,
   parseFlameSeriesSlug,
@@ -321,6 +321,53 @@ function logFlameError(payload: Record<string, unknown>): void {
 }
 
 /**
+ * Reads Open Graph image URL from a Flame HTML page (series overview or chapter).
+ */
+function extractOgImageFromSeriesHtml(html: string): string | null {
+  const ordered = html.match(/property="og:image"\s+content="([^"]+)"/i);
+  if (ordered?.[1]) {
+    return ordered[1].trim();
+  }
+  const reversed = html.match(
+    /content="([^"]+)"\s+[^>]*property="og:image"/i,
+  );
+  if (reversed?.[1]) {
+    return reversed[1].trim();
+  }
+  return null;
+}
+
+/**
+ * Fetches the Flame series/novel overview once and returns the newest chapter title and optional OG cover URL.
+ * Uses a longer timeout and Referer than the default fetch helper so serverless runs (e.g. Vercel) are less likely to time out before `__NEXT_DATA__` parses.
+ */
+export async function fetchFlameSeriesOverviewHomeExtras(
+  seriesSlug: string,
+): Promise<{ latestChapterTitle: string | null; coverImageUrl: string | null }> {
+  const parsed = parseFlameSeriesSlug(seriesSlug);
+  if (!parsed) {
+    return { latestChapterTitle: null, coverImageUrl: null };
+  }
+  const url = `${FLAME_BASE_URL}/${parsed.contentKind}/${parsed.numericId}`;
+  const html = await fetchHtmlWithOptions(url, {
+    timeoutMs: 28_000,
+    referer: `${FLAME_BASE_URL}/browse`,
+  });
+  if (!html) {
+    return { latestChapterTitle: null, coverImageUrl: null };
+  }
+  const chapters =
+    parseFlameSeriesChaptersFromNextData(html, parsed) ??
+    extractChapterSummaries(parsed, html);
+  const latestChapterTitle =
+    chapters.length > 0
+      ? (chapters[chapters.length - 1]?.title?.trim() ?? null)
+      : null;
+  const coverImageUrl = extractOgImageFromSeriesHtml(html);
+  return { latestChapterTitle, coverImageUrl };
+}
+
+/**
  * Live adapter for Flame Comics (`https://flamecomics.xyz/`).
  * Manhwa slugs are numeric (`"2"`); web novels use `novel-{id}` because browse JSON may only include `novel_id`.
  * Chapter `slug` is the 16-char hex token in URLs.
@@ -354,7 +401,10 @@ export class FlameSourceAdapter implements SourceAdapter {
     }
 
     const url = `${FLAME_BASE_URL}/${parsed.contentKind}/${parsed.numericId}`;
-    const html = await fetchHtml(url);
+    const html = await fetchHtmlWithOptions(url, {
+      timeoutMs: 28_000,
+      referer: `${FLAME_BASE_URL}/browse`,
+    });
     if (!html) {
       logFlameError({
         code: "network",

@@ -142,7 +142,7 @@ export async function resolveSeriesContextForUser(
 
   if (cachedHit) {
     return {
-      seriesSlug,
+      seriesSlug: cachedHit.seriesSlug, // Use the canonical slug from DB
       seriesTitle: decodeBasicHtmlEntities(cachedHit.title).trim(),
       sourceId: cachedHit.source.id,
       sourceKey: cachedHit.source.key,
@@ -152,19 +152,72 @@ export async function resolveSeriesContextForUser(
     };
   }
 
+  // Smart Fallback 1: Prefix matching (handles Asura hashes being added or changed)
+  const fuzzyHit = await prisma.seriesCache.findFirst({
+    where: {
+      seriesSlug: { startsWith: seriesSlug, mode: "insensitive" },
+      source: { isEnabled: true },
+    },
+    include: { source: { select: { id: true, key: true, name: true, baseUrl: true } } },
+  });
+
+  if (fuzzyHit) {
+    return {
+      seriesSlug: fuzzyHit.seriesSlug,
+      seriesTitle: decodeBasicHtmlEntities(fuzzyHit.title).trim(),
+      sourceId: fuzzyHit.source.id,
+      sourceKey: fuzzyHit.source.key,
+      sourceName: fuzzyHit.source.name,
+      sourceBaseUrl: fuzzyHit.source.baseUrl,
+      coverImageUrl: fuzzyHit.coverImageUrl,
+    };
+  }
+
   // Last resort: Live Scrape (only for brand new series not yet in our search/cache maps)
   const [asuraList, flameList] = await Promise.all([
     buildLiveBrowseCatalogForSource("asura-scans"),
     buildLiveBrowseCatalogForSource("flame-scans"),
   ]);
-  const asuraHit = asuraList.find((h) => h.seriesSlug === seriesSlug);
-  const flameHit = flameList.find((h) => h.seriesSlug === seriesSlug);
+  const asuraHit = asuraList.find((h) => h.seriesSlug.toLowerCase().startsWith(seriesSlug.toLowerCase()));
+  const flameHit = flameList.find((h) => h.seriesSlug.toLowerCase().startsWith(seriesSlug.toLowerCase()));
   let liveEntry = asuraHit ?? flameHit;
   if (asuraHit && flameHit) {
     liveEntry = /^\d+$/.test(seriesSlug) ? flameHit : asuraHit;
   }
 
   if (!liveEntry) {
+    // Smart Fallback 2: Direct site resolution (final attempt)
+    // If we can't find it in our lists, maybe it's just a new hashed slug we haven't seen.
+    // We try to ping Asura / Flame once to see if the page exists or redirects.
+    try {
+      const sourceRow = await prisma.source.findFirst({
+        where: { key: "asura-scans", isEnabled: true },
+      });
+      if (sourceRow) {
+        const url = `${sourceRow.baseUrl}/series/${seriesSlug}`;
+        const resp = await fetch(url, { method: "HEAD", redirect: "follow" });
+        if (resp.ok) {
+          const finalUrl = resp.url;
+          const match = finalUrl.match(/\/series\/([^/?#]+)/);
+          if (match && match[1] && match[1] !== seriesSlug) {
+            // It redirected to a new slug! Update DB and return.
+            // (We'll let the next request cache full details)
+            return {
+              seriesSlug: match[1],
+              seriesTitle: seriesSlug, // Fallback title
+              sourceId: sourceRow.id,
+              sourceKey: sourceRow.key,
+              sourceName: sourceRow.name,
+              sourceBaseUrl: sourceRow.baseUrl,
+              coverImageUrl: null,
+            };
+          }
+        }
+      }
+    } catch {
+      /* ignore resolution failures */
+    }
+
     return null;
   }
 

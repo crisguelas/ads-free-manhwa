@@ -97,11 +97,11 @@ export function parseAsuraBrowseCardsHtml(html: string): LiveBrowseRow[] {
   const rows: LiveBrowseRow[] = [];
   for (let i = 1; i < chunks.length; i += 1) {
     const chunk = chunks[i];
-    const hrefMatch = chunk.match(/href="\/comics\/([^"]+)"/);
-    if (!hrefMatch?.[1]) {
+    const hrefMatch = chunk.match(/href="\/(comics|series)\/([^"]+)"/);
+    if (!hrefMatch?.[2]) {
       continue;
     }
-    const slug = hrefMatch[1];
+    const slug = hrefMatch[2];
     const orderedImg = chunk.match(
       /<img[^>]+src="(https?:\/\/[^"]+)"[^>]*alt="([^"]*)"/i,
     );

@@ -1422,3 +1422,26 @@ pm run build) passed successfully.
 
 **Next**
 - Monitor Asura/Flame browse HTML changes and adjust card-level chapter/type selectors if upstream markup shifts.
+
+---
+
+### 2026-04-13 - Restore latest-card format + Flame latest resilience
+
+**Objective**
+- Restore latest update card copy to the intended structure and prevent Flame latest/browse from collapsing to the 5-item curated fallback on transient scrape failures.
+
+**Changes made**
+- `components/browse-ui-client.tsx`: forced latest cards to always render:
+  - line 2: `Latest from {source}`
+  - line 3: latest chapter label (or a neutral unavailable fallback), removing subtitle/genre fallback text in latest rows.
+- `lib/live-source-browse.ts`:
+  - Added Flame browse retry (cache-busting second request) when the first HTML fetch returns empty.
+  - Added `enrichFlameRowsWithLatestChapterLabels` to backfill missing chapter labels for home latest cards using the Flame adapter (cached home window).
+  - Bumped Flame cache keys (`home-latest-flame` and `live-flame-browse-series`) and added a direct retry path in `buildLiveBrowseCatalogForSource` before falling back to curated-only entries.
+
+**Verification**
+- `npm run lint`
+- `npm run build`
+
+**Next**
+- Monitor Flame upstream for anti-bot or payload shape changes; if retries still fail in production, add persistent last-known-good catalog storage.

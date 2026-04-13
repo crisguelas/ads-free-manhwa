@@ -6,6 +6,7 @@ import type { BrowseSourceKey } from "@/lib/browse-constants";
 import { isFlameWebNovelSeriesSlug } from "@/lib/flame-series-slug";
 import { decodeBasicHtmlEntities } from "@/lib/html-entities";
 import { isAllowedScanlationFormatLabel } from "@/lib/scanlation-format-filter";
+import { getSourceAdapter } from "@/lib/sources/registry";
 
 import { fetchHtml } from "@/lib/fetch-utils";
 const ASURA_BASE_URL = "https://asurascans.com";
@@ -366,11 +367,53 @@ function parseFlameLatestChapterLabelsBySeriesSlug(
  * (extra `?page=` URLs repeat the same payload); we do not paginate network requests for Flame.
  */
 async function fetchFlameBrowseRows(): Promise<LiveBrowseRow[]> {
-  const html = await fetchHtml(FLAME_BROWSE_URL);
+  let html = await fetchHtml(FLAME_BROWSE_URL);
+  if (!html) {
+    // Retry once with a cache-busting query in case upstream/CDN serves a transient empty response.
+    html = await fetchHtml(`${FLAME_BROWSE_URL}?_=${Date.now()}`);
+  }
   if (!html) {
     return [];
   }
   return parseFlameBrowseSeriesHtml(html);
+}
+
+/**
+ * Backfills Flame latest chapter labels for home cards by asking the adapter only when the browse payload has no chapter text.
+ * This runs on the home latest cache window (30m), not per request.
+ */
+async function enrichFlameRowsWithLatestChapterLabels(
+  rows: LiveBrowseRow[],
+): Promise<LiveBrowseRow[]> {
+  const adapter = getSourceAdapter("flame-scans");
+  if (!adapter) {
+    return rows;
+  }
+  const out = [...rows];
+  const CONCURRENCY = 6;
+  for (let i = 0; i < out.length; i += CONCURRENCY) {
+    const chunk = out.slice(i, i + CONCURRENCY);
+    const resolved = await Promise.all(
+      chunk.map(async (row) => {
+        if (row.latestChapterLabel?.trim()) {
+          return row;
+        }
+        const chapters = await adapter.listSeriesChapters(row.seriesSlug);
+        if (chapters.length === 0) {
+          return row;
+        }
+        const latest = chapters[chapters.length - 1];
+        return {
+          ...row,
+          latestChapterLabel: latest?.title?.trim() || row.latestChapterLabel,
+        };
+      }),
+    );
+    for (let j = 0; j < resolved.length; j += 1) {
+      out[i + j] = resolved[j];
+    }
+  }
+  return out;
 }
 
 /**
@@ -451,16 +494,16 @@ export function getHomeLatestFlameHighlights(): Promise<CatalogHighlight[]> {
       if (!html) {
         return fallbackFlameLatestHighlights();
       }
-      const rows = parseFlameBrowseSeriesByRecency(html)
+      let rows = parseFlameBrowseSeriesByRecency(html)
         .filter((row) => !isFlameWebNovelSeriesSlug(row.seriesSlug))
         .slice(0, HOME_LATEST_PER_SOURCE);
       if (rows.length === 0) {
         return fallbackFlameLatestHighlights();
       }
-      // Flame browse JSON does not embed chapter-level data; cards display source name as subtitle.
+      rows = await enrichFlameRowsWithLatestChapterLabels(rows);
       return rows.map(liveRowToHighlight);
     },
-    ["home-latest-flame", "v6"],
+    ["home-latest-flame", "v7"],
     { revalidate: HOME_LATEST_REVALIDATE_SEC },
   )();
 }
@@ -529,7 +572,7 @@ function getCachedAsuraLiveRows(): Promise<LiveBrowseRow[]> {
 function getCachedFlameLiveRows(): Promise<LiveBrowseRow[]> {
   return unstable_cache(
     async () => fetchFlameBrowseRows(),
-    ["live-flame-browse-series", "v5"],
+    ["live-flame-browse-series", "v6"],
     { revalidate: 3600 },
   )();
 }
@@ -548,7 +591,13 @@ export async function buildLiveBrowseCatalogForSource(
     return mergeAsuraWithCurated(live, CATALOG_HIGHLIGHTS);
   }
   const live = await getCachedFlameLiveRows();
-  const flameRows = live.filter((row) => !isFlameWebNovelSeriesSlug(row.seriesSlug));
+  let flameRows = live.filter((row) => !isFlameWebNovelSeriesSlug(row.seriesSlug));
+  if (flameRows.length === 0) {
+    // Retry live fetch once outside the cache wrapper so transient upstream empties
+    // don't pin the catalog to the tiny curated fallback list for an hour.
+    const retryRows = await fetchFlameBrowseRows();
+    flameRows = retryRows.filter((row) => !isFlameWebNovelSeriesSlug(row.seriesSlug));
+  }
   if (flameRows.length === 0) {
     return CATALOG_HIGHLIGHTS.filter((h) => h.sourceKey === "flame-scans");
   }

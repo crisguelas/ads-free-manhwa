@@ -376,6 +376,7 @@ export function ChapterReaderView({
                   loading={pageNum <= EAGER_IMAGE_COUNT ? "eager" : "lazy"}
                   decoding="async"
                   referrerPolicy="no-referrer"
+                  sizes="(max-width: 768px) 100vw, 768px"
                   onLoad={onImageLoad}
                 />
               </figure>

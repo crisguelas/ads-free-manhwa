@@ -1,3 +1,4 @@
+import { fetchHtml } from "@/lib/fetch-utils";
 import {
   type ParsedFlameSeriesSlug,
   parseFlameSeriesSlug,
@@ -22,8 +23,6 @@ const FLAME_BASE_URL = "https://flamecomics.xyz";
  * CDN base used for chapter page assets referenced in `__NEXT_DATA__` and `<img>` tags.
  */
 const FLAME_CDN_HOST = "cdn.flamecomics.xyz";
-
-const REQUEST_TIMEOUT_MS = 10000;
 
 /**
  * Describes JSON shape under `props.pageProps.chapter` in Flame chapter pages.
@@ -51,36 +50,6 @@ type FlameNextData = {
     };
   };
 };
-
-/**
- * Fetches HTML with timeout; returns empty string on failure.
- */
-async function fetchHtml(url: string): Promise<string> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-
-  try {
-    const response = await fetch(url, {
-      headers: {
-        "user-agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        accept: "text/html,application/xhtml+xml",
-      },
-      cache: "no-store",
-      signal: controller.signal,
-    });
-
-    if (!response.ok) {
-      return "";
-    }
-
-    return await response.text();
-  } catch {
-    return "";
-  } finally {
-    clearTimeout(timeout);
-  }
-}
 
 /**
  * Parses a numeric chapter order from Flame link text (e.g. "Chapter 306 - Part 8").

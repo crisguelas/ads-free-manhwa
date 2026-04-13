@@ -1,3 +1,4 @@
+import { fetchHtml } from "@/lib/fetch-utils";
 import { decodeBasicHtmlEntities } from "@/lib/html-entities";
 import type {
   SourceAdapter,
@@ -14,7 +15,6 @@ import {
  */
 const ASURA_BASE_URL = "https://asurascans.com";
 const SLUG_CACHE_TTL_MS = 1000 * 60 * 30;
-const REQUEST_TIMEOUT_MS = 10000;
 
 /**
  * Defines normalized error categories for adapter operations.
@@ -58,35 +58,6 @@ function normalizeSlug(value: string): string {
  */
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-/**
- * Fetches page HTML and returns empty string on request failure.
- */
-async function fetchHtml(url: string): Promise<string> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-
-  try {
-    const response = await fetch(url, {
-      headers: {
-        "user-agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-      },
-      cache: "no-store",
-      signal: controller.signal,
-    });
-
-    if (!response.ok) {
-      return "";
-    }
-
-    return await response.text();
-  } catch {
-    return "";
-  } finally {
-    clearTimeout(timeout);
-  }
 }
 
 /**

@@ -6,11 +6,10 @@ import type { BrowseSourceKey } from "@/lib/browse-constants";
 import { isFlameWebNovelSeriesSlug } from "@/lib/flame-series-slug";
 import { decodeBasicHtmlEntities } from "@/lib/html-entities";
 import { isAllowedScanlationFormatLabel } from "@/lib/scanlation-format-filter";
-import { getSourceAdapter } from "@/lib/sources/registry";
 
+import { fetchHtml } from "@/lib/fetch-utils";
 const ASURA_BASE_URL = "https://asurascans.com";
 const FLAME_BROWSE_URL = "https://flamecomics.xyz/browse";
-const FETCH_TIMEOUT_MS = 12_000;
 /**
  * Safety cap for Asura `/browse?page=` walks. The site paginates beyond the few page links visible on page 1,
  * so we keep requesting until a page returns zero cards (see `fetchAllAsuraBrowseRows`).
@@ -37,6 +36,10 @@ export type LiveBrowseRow = {
   title: string;
   coverImageUrl: string | null;
   sourceKey: BrowseSourceKey;
+  /** Latest chapter label parsed from the browse card (if available); avoids per-series adapter calls. */
+  latestChapterLabel?: string;
+  /** Optional format/type label parsed from card payload (used to avoid extra per-row requests on home latest). */
+  formatLabel?: string;
 };
 
 /**
@@ -44,33 +47,6 @@ export type LiveBrowseRow = {
  */
 export function stripAsuraHashSuffix(slug: string): string {
   return slug.replace(/-[a-z0-9]{8,}$/i, "");
-}
-
-/**
- * Fetches remote HTML with timeout; returns empty string on failure.
- */
-async function fetchHtml(url: string): Promise<string> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  try {
-    const response = await fetch(url, {
-      headers: {
-        "user-agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        accept: "text/html,application/xhtml+xml",
-      },
-      cache: "no-store",
-      signal: controller.signal,
-    });
-    if (!response.ok) {
-      return "";
-    }
-    return await response.text();
-  } catch {
-    return "";
-  } finally {
-    clearTimeout(timeout);
-  }
 }
 
 /**
@@ -117,14 +93,34 @@ export function parseAsuraBrowseCardsHtml(html: string): LiveBrowseRow[] {
       cover = reversedImg[2];
       title = decodeBasicHtmlEntities(reversedImg[1] || slug);
     }
+    // Extract latest chapter label from the card markup (e.g. "Chapter 123") without making per-series adapter calls.
+    const chapterMatch = chunk.match(/Chapter\s+[\d.]+/i);
+    const cardFormatLabel = parseAsuraFormatLabelFromCardChunk(chunk);
     rows.push({
       seriesSlug: slug,
       title: title.trim() || slug,
       coverImageUrl: cover,
       sourceKey: "asura-scans",
+      latestChapterLabel: chapterMatch?.[0] ?? undefined,
+      formatLabel: cardFormatLabel ?? undefined,
     });
   }
   return rows;
+}
+
+/**
+ * Reads a coarse format/type label from one Asura browse card when present.
+ * This avoids one `/comics/{slug}` fetch per tile for the home latest strip.
+ */
+function parseAsuraFormatLabelFromCardChunk(chunk: string): string | null {
+  const candidates = ["manhwa", "manga", "manhua", "webtoon", "comic", "novel"];
+  const lowered = chunk.toLowerCase();
+  for (const c of candidates) {
+    if (new RegExp(`\\b${c}\\b`, "i").test(lowered)) {
+      return c;
+    }
+  }
+  return null;
 }
 
 /**
@@ -168,30 +164,51 @@ async function filterAsuraLiveBrowseRowsToAllowedFormats(
  */
 async function fetchAllAsuraBrowseRows(): Promise<LiveBrowseRow[]> {
   const bySlug = new Map<string, LiveBrowseRow>();
-  const ingest = (list: LiveBrowseRow[]) => {
-    for (const row of list) {
-      if (!bySlug.has(row.seriesSlug)) {
-        bySlug.set(row.seriesSlug, row);
+  const BATCH_SIZE = 6;
+  let page = 1;
+  let keepGoing = true;
+
+  while (page <= ASURA_BROWSE_MAX_PAGES && keepGoing) {
+    const promises = [];
+    for (let i = 0; i < BATCH_SIZE; i++) {
+      const current = page + i;
+      if (current > ASURA_BROWSE_MAX_PAGES) break;
+      const url =
+        current === 1
+          ? `${ASURA_BASE_URL}/browse`
+          : `${ASURA_BASE_URL}/browse?page=${current}`;
+      promises.push(fetchHtml(url));
+    }
+
+    const results = await Promise.all(promises);
+
+    for (const html of results) {
+      if (!html) {
+        keepGoing = false;
+        break;
+      }
+      const rows = parseAsuraBrowseCardsHtml(html);
+      if (rows.length === 0) {
+        keepGoing = false;
+        break;
+      }
+
+      let newlyAdded = 0;
+      for (const row of rows) {
+        if (!bySlug.has(row.seriesSlug)) {
+          bySlug.set(row.seriesSlug, row);
+          newlyAdded++;
+        }
+      }
+
+      // Early exit: if we just parsed a full page but all series were already seen,
+      // the site is likely returning duplicate fallback pages beyond its true last page.
+      if (newlyAdded === 0 && rows.length > 0) {
+        keepGoing = false;
+        break;
       }
     }
-  };
-
-  let page = 1;
-  while (page <= ASURA_BROWSE_MAX_PAGES) {
-    const url =
-      page === 1
-        ? `${ASURA_BASE_URL}/browse`
-        : `${ASURA_BASE_URL}/browse?page=${page}`;
-    const html = await fetchHtml(url);
-    if (!html) {
-      break;
-    }
-    const rows = parseAsuraBrowseCardsHtml(html);
-    if (rows.length === 0) {
-      break;
-    }
-    ingest(rows);
-    page += 1;
+    page += BATCH_SIZE;
   }
 
   return filterAsuraLiveBrowseRowsToAllowedFormats([...bySlug.values()]);
@@ -305,10 +322,42 @@ export function parseFlameBrowseSeriesByRecency(html: string): LiveBrowseRow[] {
   const sorted = [...series].sort(
     (a, b) => (b.last_edit ?? 0) - (a.last_edit ?? 0),
   );
+  const chapterBySeriesSlug = parseFlameLatestChapterLabelsBySeriesSlug(html);
   return sorted.flatMap((s) => {
     const row = flameJsonSeriesToRow(s);
+    if (row) {
+      row.latestChapterLabel = chapterBySeriesSlug.get(row.seriesSlug);
+    }
     return row ? [row] : [];
   });
+}
+
+/**
+ * Parses Flame browse card links and extracts chapter labels keyed by series slug.
+ * Expected pattern: `/series/{id}/{token}` or `/novel/{id}/{token}` with visible "Chapter ..." text.
+ */
+function parseFlameLatestChapterLabelsBySeriesSlug(
+  html: string,
+): Map<string, string> {
+  const out = new Map<string, string>();
+  const linkPattern =
+    /href="\/(series|novel)\/(\d+)\/[a-f0-9]{16}"[^>]*>([\s\S]*?)<\/a>/gi;
+  for (const match of html.matchAll(linkPattern)) {
+    const kind = match[1];
+    const id = match[2];
+    const rawText = decodeBasicHtmlEntities(
+      (match[3] ?? "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim(),
+    );
+    const chapterMatch = rawText.match(/Chapter\s+[\d.]+(?:\s*-\s*[^|]+)?/i);
+    if (!chapterMatch?.[0]) {
+      continue;
+    }
+    const seriesSlug = kind === "novel" ? `novel-${id}` : id;
+    if (!out.has(seriesSlug)) {
+      out.set(seriesSlug, chapterMatch[0].trim());
+    }
+  }
+  return out;
 }
 
 /**
@@ -336,6 +385,9 @@ function liveRowToHighlight(row: LiveBrowseRow): CatalogHighlight {
     sourceName: row.sourceKey === "asura-scans" ? "Asura Scans" : "Flame Comics",
     sourceKey: row.sourceKey,
     genres: [],
+    latestChapter: row.latestChapterLabel
+      ? { title: row.latestChapterLabel }
+      : undefined,
   };
 }
 
@@ -369,35 +421,22 @@ export function getHomeLatestAsuraHighlights(): Promise<CatalogHighlight[]> {
       if (!html) {
         return fallbackAsuraLatestHighlights();
       }
-      const rows = parseAsuraBrowseCardsHtml(html).slice(0, HOME_LATEST_PER_SOURCE);
-      const filtered = await filterAsuraLiveBrowseRowsToAllowedFormats(rows);
-      if (filtered.length === 0) {
+      const rows = parseAsuraBrowseCardsHtml(html)
+        .filter((row) => {
+          if (!row.formatLabel) {
+            return true;
+          }
+          return isAllowedScanlationFormatLabel(row.formatLabel);
+        })
+        .slice(0, HOME_LATEST_PER_SOURCE);
+      if (rows.length === 0) {
         return fallbackAsuraLatestHighlights();
       }
-      
-      const highlights = filtered.map(liveRowToHighlight);
-      const adapter = getSourceAdapter("asura-scans");
-      if (adapter) {
-        await Promise.all(
-          highlights.map(async (h) => {
-            try {
-              const chapters = await adapter.listSeriesChapters(h.seriesSlug);
-              if (chapters.length > 0) {
-                const latest = chapters[chapters.length - 1];
-                h.latestChapter = {
-                  title: latest.chapterLabel || latest.title,
-                  slug: latest.slug,
-                };
-              }
-            } catch {
-              // Ignore timeouts or parsing failures silently for home card loading
-            }
-          })
-        );
-      }
-      return highlights;
+      // Chapter labels and coarse format labels are extracted from card HTML at parse time.
+      // This avoids per-series adapter calls and per-row `/comics/{slug}` lookups on home requests.
+      return rows.map(liveRowToHighlight);
     },
-    ["home-latest-asura", "v3"],
+    ["home-latest-asura", "v4"],
     { revalidate: HOME_LATEST_REVALIDATE_SEC },
   )();
 }
@@ -418,30 +457,10 @@ export function getHomeLatestFlameHighlights(): Promise<CatalogHighlight[]> {
       if (rows.length === 0) {
         return fallbackFlameLatestHighlights();
       }
-      
-      const highlights = rows.map(liveRowToHighlight);
-      const adapter = getSourceAdapter("flame-scans");
-      if (adapter) {
-        await Promise.all(
-          highlights.map(async (h) => {
-            try {
-              const chapters = await adapter.listSeriesChapters(h.seriesSlug);
-              if (chapters.length > 0) {
-                const latest = chapters[chapters.length - 1];
-                h.latestChapter = {
-                  title: latest.chapterLabel || latest.title,
-                  slug: latest.slug,
-                };
-              }
-            } catch {
-              // Ignore timeouts or parsing failures silently for home card loading
-            }
-          })
-        );
-      }
-      return highlights;
+      // Flame browse JSON does not embed chapter-level data; cards display source name as subtitle.
+      return rows.map(liveRowToHighlight);
     },
-    ["home-latest-flame", "v5"],
+    ["home-latest-flame", "v6"],
     { revalidate: HOME_LATEST_REVALIDATE_SEC },
   )();
 }

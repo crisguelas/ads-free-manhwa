@@ -2,9 +2,9 @@ import { unstable_cache } from "next/cache";
 import { flameOverviewPageUrl, parseFlameSeriesSlug } from "@/lib/flame-series-slug";
 import { decodeBasicHtmlEntities } from "@/lib/html-entities";
 import { resolveAsuraSeriesSlug } from "@/lib/sources/adapters/asura-source-adapter";
+import { fetchHtml } from "@/lib/fetch-utils";
 
 const ASURA_BASE_URL = "https://asurascans.com";
-const FETCH_TIMEOUT_MS = 12_000;
 
 /**
  * Strips simple HTML tags for synopsis snippets embedded in JSON fields.
@@ -117,33 +117,6 @@ export function extractAsuraSeriesStatusFromHtml(html: string): string | null {
   if (m2?.[1]) return m2[1].trim();
 
   return null;
-}
-
-/**
- * Fetches remote HTML with timeout; returns empty string on failure.
- */
-async function fetchHtml(url: string): Promise<string> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  try {
-    const response = await fetch(url, {
-      headers: {
-        "user-agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        accept: "text/html,application/xhtml+xml",
-      },
-      cache: "no-store",
-      signal: controller.signal,
-    });
-    if (!response.ok) {
-      return "";
-    }
-    return await response.text();
-  } catch {
-    return "";
-  } finally {
-    clearTimeout(timeout);
-  }
 }
 
 export type SeriesPageMeta = {

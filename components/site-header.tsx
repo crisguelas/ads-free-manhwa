@@ -1,14 +1,13 @@
 import Link from "next/link";
 import type { SessionUser } from "@/lib/auth/current-user";
 import { BrowseNavDropdown } from "@/components/browse-nav-dropdown";
-import { BrowseHeaderSearch } from "@/components/browse-ui-client";
 import { CloudMark } from "@/components/brand/cloud-mark";
 import { LogoutButton } from "@/components/auth/logout-button";
+import { SiteHeaderSearchShell } from "@/components/site-header-search-shell";
+
 type SiteHeaderProps = {
   user: SessionUser | null;
 };
-
-const BROWSE_ANCHOR = "browse";
 
 /**
  * Top bar: Home, Browse (per-source submenu), Bookmarks, search, and auth (violet accent).
@@ -45,7 +44,7 @@ export function SiteHeader({ user }: SiteHeaderProps) {
         </nav>
 
         <div className="ml-auto flex flex-1 items-center justify-end gap-2 sm:flex-initial md:flex-1 lg:max-w-md">
-          <BrowseHeaderSearch browseTargetId={BROWSE_ANCHOR} />
+          <SiteHeaderSearchShell />
           {user ? (
             <>
               <span className="hidden max-w-[10rem] truncate text-xs text-zinc-500 xl:inline">{user.email}</span>

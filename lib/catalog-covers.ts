@@ -2,10 +2,9 @@ import { unstable_cache } from "next/cache";
 import type { CatalogHighlight } from "@/lib/featured-series";
 import { CATALOG_HIGHLIGHTS } from "@/lib/featured-series";
 import { flameOverviewPageUrl, parseFlameSeriesSlug } from "@/lib/flame-series-slug";
+import { fetchHtml } from "@/lib/fetch-utils";
 import { stripAsuraHashSuffix } from "@/lib/live-source-browse";
 import { fetchAsuraSeriesCoverUrl } from "@/lib/sources/adapters/asura-source-adapter";
-
-const FETCH_TIMEOUT_MS = 12_000;
 
 /**
  * Pulls `og:image` from raw HTML for series pages (Asura / Flame).
@@ -33,27 +32,14 @@ async function fetchFlameSeriesCoverFromPage(seriesSlug: string): Promise<string
     return null;
   }
   const pageUrl = flameOverviewPageUrl(parsed);
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    const response = await fetch(pageUrl, {
-      headers: {
-        "user-agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        accept: "text/html,application/xhtml+xml",
-      },
-      cache: "no-store",
-      signal: controller.signal,
-    });
-    if (!response.ok) {
+    const html = await fetchHtml(pageUrl);
+    if (!html) {
       return null;
     }
-    const html = await response.text();
     return extractOgImageFromHtml(html);
   } catch {
     return null;
-  } finally {
-    clearTimeout(timeout);
   }
 }
 

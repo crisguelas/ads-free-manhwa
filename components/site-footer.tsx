@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { CloudMark } from "@/components/brand/cloud-mark";
-import { BROWSE_SOURCE_KEYS, BROWSE_SOURCE_LABELS } from "@/lib/source-browse-data";
 
 /**
  * Light-themed site footer with browse shortcuts; avoids third-party scan branding.

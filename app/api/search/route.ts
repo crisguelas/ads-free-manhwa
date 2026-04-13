@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { CATALOG_HIGHLIGHTS } from "@/lib/featured-series";
-import { resolveSeriesCoverUrl } from "@/lib/catalog-covers";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -42,7 +41,7 @@ export async function GET(request: Request) {
 
     const merged = new Map<string, SearchResult>();
 
-    // Add DB hits
+    // Add DB hits (cover URLs from SeriesCache are already populated by browse/detail scrapes)
     for (const res of dbResults) {
       const key = `${res.source.key}:${res.seriesSlug}`;
       merged.set(key, {
@@ -68,21 +67,10 @@ export async function GET(request: Request) {
       }
     }
 
+    // Return merged results directly — DB and static entries already carry cover URLs;
+    // live og:image resolution was removed to eliminate 10+ outbound HTTP requests per search.
     const results = Array.from(merged.values()).slice(0, 10);
-
-    // 4. Resolve fresh cover URLs
-    // This handles stale Asura/Flame CDNs by pulling from og:image if needed
-    const finalResults = await Promise.all(
-      results.map(async (r) => {
-        const freshCover = await resolveSeriesCoverUrl(r.sourceKey, r.slug);
-        return {
-          ...r,
-          coverImageUrl: freshCover || r.coverImageUrl,
-        };
-      })
-    );
-
-    return NextResponse.json(finalResults);
+    return NextResponse.json(results);
   } catch (error) {
     console.error("Search API Error:", error);
     return NextResponse.json({ error: "Search failed" }, { status: 500 });

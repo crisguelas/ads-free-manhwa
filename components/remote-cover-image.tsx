@@ -22,6 +22,10 @@ export function RemoteCoverImage({
 }: RemoteCoverImageProps) {
   const [broken, setBroken] = useState(false);
   const showPlaceholder = !src || broken;
+  const intrinsic =
+    variant === "poster"
+      ? { width: 160, height: 213, sizes: "(max-width: 640px) 128px, 148px" }
+      : { width: 120, height: 168, sizes: "(max-width: 768px) 64px, 72px" };
 
   if (showPlaceholder && variant === "poster") {
     return (
@@ -47,6 +51,9 @@ export function RemoteCoverImage({
       referrerPolicy="no-referrer"
       loading="lazy"
       decoding="async"
+      width={intrinsic.width}
+      height={intrinsic.height}
+      sizes={intrinsic.sizes}
       className={
         variant === "poster"
           ? `aspect-[3/4] w-full rounded-lg object-cover ${className}`

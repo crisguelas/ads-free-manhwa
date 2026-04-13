@@ -1152,7 +1152,8 @@ This file tracks implementation steps so future developers can understand what w
 - Fix bug where all Asura series show as "Finished" and move status pill below poster.
 
 **Changes made**
-- lib/series-synopsis.ts: Strip <script> tags before extractAsuraSeriesStatusFromHtml so eadyState==="complete" doesn't match.
+- lib/series-synopsis.ts: Strip <script> tags before extractAsuraSeriesStatusFromHtml so 
+eadyState==="complete" doesn't match.
 - components/series-detail-view.tsx: Move status pill layout below RemoteCoverImage.
 
 **Verification**
@@ -1252,7 +1253,8 @@ pm run lint. Cleared database records successfully via node execution previously
 - lib/sources/adapters/asura-source-adapter.ts: Added HTML sanitization regex replacement .replace(/&quot;/ig, '"').replace(/\\\//g, '/') prior to extracting URLs so boundary markers strictly match un-escaped standard layouts.
 
 **Verification**
-- Scanned Genius Prismatic Mage Chapter 68 via un_command scraping pipeline yielding full 20 WebP objects successfully. Built successfully.
+- Scanned Genius Prismatic Mage Chapter 68 via 
+un_command scraping pipeline yielding full 20 WebP objects successfully. Built successfully.
 
 **Next**
 - None.
@@ -1363,3 +1365,60 @@ Resolve "Permission denied (publickey)" error when pushing to GitHub from the ag
 
 ### Verification
 - Successfully authenticated and pushed all pending milestones to the remote repository.
+  
+---  
+  
+### 2026-04-13 - Performance Optimization Audit & Implementation  
+  
+**Objective**  
+- Reduce page load times, cut outbound HTTP waterfalls, and improve Core Web Vitals (LCP/CLS).  
+  
+**Changes made**  
+- **Home Page Waterfall Fix**: Removed per-series listSeriesChapters() calls during cache rebuilds by parsing chapter info directly from browse HTML. Reduced outbound requests from 40+ to near-zero on cached hits.  
+- **ISR Implementation**: Converted the home page from force-dynamic to static ISR (5-minute revalidation). Moved personalized sections to a client-side fetch (/api/personal/home).  
+- **Caching & Authentication**: Wrapped getSessionUser in React cache() to deduplicate JWT verification. Removed live cover resolution from search API.  
+- **Database & Parallelization**: Parallelized DB/meta fetches in series detail. Batch-crawled Asura browse pages (6 at a time). Made chapter cache sync fire-and-forget.  
+- **UX & Rendering**: Added width/height to covers to prevent Layout Shift. Added sizes hints for optimized image decoding. Updated next.config.ts with compression and security headers.  
+  
+**Verification**  
+- npm run build and npm run lint passed successfully.  
+  
+**Next**  
+- None. 
+
+### 2026-04-13 - Code Hygiene & Bundle Optimization
+
+**Objective**
+- Standardize network logic and reduce client bundle size.
+
+**Changes made**
+- **Logic Consolidation**: Created lib/fetch-utils.ts and replaced duplicate etchHtml implementations across all adapters and scrapers.
+- **Bundle Splitting**: Moved BrowseHeaderSearch to its own standalone client component file to separate global header logic from heavy browse grid components.
+- **Bug Fixes**: Resolved variable duplication and missing type regressions introduced during refactoring.
+
+**Verification**
+- Full production build (
+pm run build) passed successfully.
+
+**Next**
+- Monitor source sites for HTML changes.
+
+---
+
+### 2026-04-13 - Performance follow-through completion
+
+**Objective**
+- Close remaining gaps from the performance audit so all 12 tracked items are fully implemented in code.
+
+**Changes made**
+- `lib/live-source-browse.ts`: removed home-page per-row Asura format fetches by parsing coarse format labels directly from browse card HTML and filtering locally; added Flame browse HTML chapter-label extraction map so latest cards can carry chapter text without adapter calls.
+- `lib/catalog-covers.ts`: replaced custom Flame cover HTML fetch/timeout path with shared `fetchHtml` utility to finish scraper fetch consolidation.
+- `components/remote-cover-image.tsx`: applied intrinsic `width`/`height` and `sizes` for both `poster` and `thumb` variants to reduce CLS risk in latest/search thumbnail rows.
+- `components/site-header.tsx`: switched header search to dynamic client loading (`next/dynamic`, `ssr: false`) for real runtime code-splitting instead of file-only separation.
+
+**Verification**
+- `npm run lint`
+- `npm run build`
+
+**Next**
+- Monitor Asura/Flame browse HTML changes and adjust card-level chapter/type selectors if upstream markup shifts.

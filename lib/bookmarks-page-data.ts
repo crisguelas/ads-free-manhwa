@@ -108,5 +108,9 @@ export async function getBookmarksForUser(userId: string): Promise<BookmarkListE
       })
   );
 
-  return entries.map(({ _needsResolution, ...clean }) => clean);
+  return entries.map((entry) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    delete (entry as any)._needsResolution;
+    return entry;
+  });
 }

@@ -1,16 +1,4 @@
-import {
-  enrichCatalogHighlightCovers,
-  resolveSeriesCoverUrl,
-} from "@/lib/catalog-covers";
-import { isFlameWebNovelSeriesSlug } from "@/lib/flame-series-slug";
 import type { CatalogHighlight } from "@/lib/featured-series";
-import { getSessionUser } from "@/lib/auth/current-user";
-import {
-  firstFollowMapValue,
-  followRowLookupKeys,
-  normalizeContinueReadingSeriesKey,
-} from "@/lib/continue-reading-display";
-import { displayFollowSeriesTitle } from "@/lib/follow-series-title";
 import {
   getHomeLatestAsuraHighlights,
   getHomeLatestFlameHighlights,
@@ -74,94 +62,16 @@ export type HomePageData = {
   currentUserEmail: string | null;
 };
 
-/**
- * Maps recent reads to cover art: prefer the user’s `Follow.coverImageUrl`, then the same live + static resolution as catalog tiles (`resolveSeriesCoverUrl`).
- */
-async function attachFollowCoversToRecentReads(
-  userId: string,
-  reads: Array<{
-    id: string;
-    seriesSlug: string;
-    chapterSlug: string;
-    chapterTitle: string | null;
-    source: { name: string; id: string; key: string };
-  }>,
-): Promise<ContinueReadingCard[]> {
-  if (reads.length === 0) {
-    return [];
-  }
+// `attachFollowCoversToRecentReads` function removed along with its dependencies
+// as it will be moved to the personalized API route.
 
-  const followRows = await prisma.follow.findMany({
-    where: { userId },
-    select: {
-      sourceId: true,
-      seriesSlug: true,
-      coverImageUrl: true,
-      seriesTitle: true,
-    },
-  });
-
-  const key = (sourceId: string, seriesSlug: string) => `${sourceId}:${seriesSlug}`;
-
-  const coverMap = new Map(
-    followRows.map((f) => [key(f.sourceId, f.seriesSlug), f.coverImageUrl] as const),
-  );
-
-  const titleMap = new Map(
-    followRows.map((f) => [key(f.sourceId, f.seriesSlug), displayFollowSeriesTitle(f.seriesTitle)] as const),
-  );
-
-  const base = reads.map((r) => {
-    const keys = followRowLookupKeys(r.source.id, r.source.key, r.seriesSlug);
-    return {
-      id: r.id,
-      seriesSlug: r.seriesSlug,
-      sourceKey: r.source.key,
-      seriesTitle: firstFollowMapValue(keys, titleMap),
-      chapterSlug: r.chapterSlug,
-      chapterTitle: r.chapterTitle,
-      sourceName: r.source.name,
-      coverImageUrl: firstFollowMapValue(keys, coverMap),
-    };
-  });
-
-  return Promise.all(
-    base.map(async (card) => {
-      if (card.coverImageUrl) {
-        return card;
-      }
-      const resolved = await resolveSeriesCoverUrl(card.sourceKey, card.seriesSlug);
-      return { ...card, coverImageUrl: resolved };
-    }),
-  );
-}
-
-/** Raw history rows to scan when deduping by series (ordered newest-first). */
-const CONTINUE_READING_HISTORY_FETCH = 320;
-/** Max distinct series on the home resume list. */
-const CONTINUE_READING_MAX_SERIES = 48;
-
-/**
- * Loads home page data from Prisma for initial UI rendering.
- * On connection failures, returns curated catalog + static sources so the page does not throw.
- */
 export async function getHomePageData(): Promise<HomePageData> {
-  const user = await getSessionUser();
-
-  const [rawAsura, rawFlame] = await Promise.all([
+  // Cover URLs are already embedded at browse-parse time and cached per-slug (daily TTL);
+  // the separate enrichCatalogHighlightCovers pass was removed to avoid per-request outbound fetches.
+  const [latestAsura, latestFlame] = await Promise.all([
     getHomeLatestAsuraHighlights(),
     getHomeLatestFlameHighlights(),
   ]);
-  let latestAsura = rawAsura;
-  let latestFlame = rawFlame;
-  try {
-    [latestAsura, latestFlame] = await Promise.all([
-      enrichCatalogHighlightCovers(rawAsura),
-      enrichCatalogHighlightCovers(rawFlame),
-    ]);
-  } catch {
-    /* keep live scrape covers */
-  }
 
   try {
     const sources = await prisma.source.findMany({
@@ -175,57 +85,13 @@ export async function getHomePageData(): Promise<HomePageData> {
       },
     });
 
-    if (!user) {
-      return {
-        sources,
-        dbOk: true,
-        recentReads: [],
-        latestAsura,
-        latestFlame,
-        currentUserEmail: null,
-      };
-    }
-
-    const historyRows = await prisma.readingHistory.findMany({
-      where: { userId: user.id },
-      orderBy: { lastReadAt: "desc" },
-      take: CONTINUE_READING_HISTORY_FETCH,
-      select: {
-        id: true,
-        seriesSlug: true,
-        chapterSlug: true,
-        chapterTitle: true,
-        source: { select: { name: true, id: true, key: true } },
-      },
-    });
-
-    const seenSeries = new Set<string>();
-    const recentReadRows: typeof historyRows = [];
-    for (const row of historyRows) {
-      if (recentReadRows.length >= CONTINUE_READING_MAX_SERIES) {
-        break;
-      }
-      if (row.source.key === "flame-scans" && isFlameWebNovelSeriesSlug(row.seriesSlug)) {
-        continue;
-      }
-      const norm = normalizeContinueReadingSeriesKey(row.source.key, row.seriesSlug);
-      const dedupeKey = `${row.source.id}:${norm}`;
-      if (seenSeries.has(dedupeKey)) {
-        continue;
-      }
-      seenSeries.add(dedupeKey);
-      recentReadRows.push(row);
-    }
-
-    const recentReads = await attachFollowCoversToRecentReads(user.id, recentReadRows);
-
     return {
       sources,
       dbOk: true,
-      recentReads,
+      recentReads: [], // Moved to client-side API
       latestAsura,
       latestFlame,
-      currentUserEmail: user.email,
+      currentUserEmail: null, // Moved to client-side API
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -236,7 +102,7 @@ export async function getHomePageData(): Promise<HomePageData> {
       recentReads: [],
       latestAsura,
       latestFlame,
-      currentUserEmail: user?.email ?? null,
+      currentUserEmail: null,
     };
   }
 }

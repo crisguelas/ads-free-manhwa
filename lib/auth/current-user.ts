@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { SESSION_COOKIE } from "@/lib/auth/session-cookie";
 import { verifySessionToken } from "@/lib/auth/session-token";
@@ -12,8 +13,10 @@ export type SessionUser = {
 
 /**
  * Reads and verifies the session cookie; returns null when logged out or misconfigured.
+ * Wrapped in React `cache()` so the JWT is verified at most once per SSR request
+ * (root layout and page components both call this without duplicate work).
  */
-export async function getSessionUser(): Promise<SessionUser | null> {
+export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
   const store = await cookies();
   const raw = store.get(SESSION_COOKIE)?.value;
   if (!raw) {
@@ -24,4 +27,4 @@ export async function getSessionUser(): Promise<SessionUser | null> {
     return null;
   }
   return { id: payload.userId, email: payload.email };
-}
+});

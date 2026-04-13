@@ -1,8 +1,7 @@
-import Link from "next/link";
 import type { HomePageData } from "@/lib/home-data";
-import { BrowsePromoRibbon, SourceLatestUpdatesSection } from "@/components/browse-ui-client";
-import { ContinueReadingCarousel } from "@/components/continue-reading-carousel";
-import { BROWSE_SOURCE_KEYS, BROWSE_SOURCE_LABELS } from "@/lib/source-browse-data";
+import { SourceLatestUpdatesSection } from "@/components/browse-ui-client";
+import { BROWSE_SOURCE_LABELS } from "@/lib/source-browse-data";
+import { ClientPersonalizedHomeSection } from "@/components/client-continue-reading";
 
 type HomeBrowseProps = {
   data: HomePageData;
@@ -29,22 +28,9 @@ export function HomeBrowse({ data }: HomeBrowseProps) {
         </div>
       ) : null}
 
-      {!data.currentUserEmail ? (
-        <BrowsePromoRibbon
-          message="Save reading progress and library across devices — create a free account."
-          ctaLabel="Register"
-          ctaHref="/register"
-        />
-      ) : null}
+      <ClientPersonalizedHomeSection />
 
       <div className="mx-auto max-w-5xl px-4 pb-10 pt-5 sm:px-6 sm:pb-12 sm:pt-7">
-        {data.currentUserEmail && data.recentReads.length > 0 ? (
-          <section className="mb-12">
-            <h2 className="mb-4 text-xs font-bold uppercase tracking-[0.12em] text-zinc-500">Continue reading</h2>
-            <ContinueReadingCarousel items={data.recentReads} />
-          </section>
-        ) : null}
-
         <div id="browse" className="scroll-mt-28">
           <div className="flex flex-col gap-10 sm:gap-12">
             <SourceLatestUpdatesSection

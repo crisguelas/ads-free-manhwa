@@ -16,7 +16,7 @@ export function BookmarkListClient({ initialEntries }: { initialEntries: Bookmar
       <div className="rounded-2xl border border-dashed border-zinc-200 bg-white px-6 py-16 text-center text-zinc-500 shadow-sm">
         <p className="text-lg font-medium text-zinc-900">All caught up!</p>
         <p className="mt-2 text-sm">
-          You don't have any bookmarks left. Open a chapter and save a bookmark to find it here later.
+          You don&apos;t have any bookmarks left. Open a chapter and save a bookmark to find it here later.
         </p>
       </div>
     );

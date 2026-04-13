@@ -1,4 +1,3 @@
-import { CATALOG_HIGHLIGHTS } from "@/lib/featured-series";
 import { getSessionUser } from "@/lib/auth/current-user";
 import { pickRowWhenSeriesSlugSpansScanSources } from "@/lib/follow-source-disambiguation";
 import { displayFollowSeriesTitle } from "@/lib/follow-series-title";
@@ -483,7 +482,8 @@ export async function getSeriesDetailData(
 
   const userScope = { userId: user.id };
 
-  const [cachedChapters, bookmarks, recentReads, seriesCacheRow] = await Promise.all([
+  // Fetch DB data and series page meta in parallel — avoids two sequential async round-trips later.
+  const [cachedChapters, bookmarks, recentReads, seriesCacheRow, prefetchedMeta] = await Promise.all([
     prisma.chapterCache.findMany({
       where: {
         sourceId: resolved.sourceId,
@@ -541,6 +541,8 @@ export async function getSeriesDetailData(
         status: true,
       },
     }),
+    // Pre-fetch page meta in parallel so synopsis + status are ready without extra round-trips.
+    getCachedSeriesPageMeta(resolved.sourceKey, seriesSlug),
   ]);
 
   const shouldRefreshFromAdapter =
@@ -552,13 +554,17 @@ export async function getSeriesDetailData(
     : [];
 
   if (liveChapterCandidates.length > 0) {
-    await syncAdapterChaptersToCache({
+    // Fire-and-forget: the page already has live data in memory; no need to block rendering
+    // while N chapter upserts round-trip to the database.
+    void syncAdapterChaptersToCache({
       sourceId: resolved.sourceId,
       seriesSlug,
       seriesTitle: resolved.seriesTitle,
       chapters: liveChapterCandidates,
-    });
-    recordCacheSyncSuccess(resolved.sourceKey, seriesSlug, liveChapterCandidates.length);
+    }).then(
+      () => recordCacheSyncSuccess(resolved.sourceKey, seriesSlug, liveChapterCandidates.length),
+      () => { /* swallow write errors — stale cache is acceptable */ },
+    );
   } else if (shouldRefreshFromAdapter && cachedChapters.length > 0) {
     recordCacheSyncFallback(
       resolved.sourceKey,
@@ -589,41 +595,34 @@ export async function getSeriesDetailData(
     ? bookmarks.find((b) => b.chapterSlug === firstChapter.slug)
     : undefined;
 
+  // Use the pre-fetched meta (already running in parallel above) for synopsis and status.
   let synopsis = seriesCacheRow?.synopsis?.trim() || null;
   const cachedStatus = seriesCacheRow?.status?.trim() || null;
 
-  if (!synopsis || !cachedStatus) {
-    const meta = await getCachedSeriesPageMeta(resolved.sourceKey, seriesSlug);
-    if (!synopsis && meta.synopsis?.trim()) {
-      synopsis = meta.synopsis.trim();
-    }
-    const data: { synopsis?: string; status?: string } = {};
-    if (!seriesCacheRow?.synopsis?.trim() && meta.synopsis?.trim()) {
-      data.synopsis = meta.synopsis.trim();
-    }
-    if (!cachedStatus && meta.status?.trim()) {
-      data.status = meta.status.trim();
-    }
-    if (Object.keys(data).length > 0) {
-      await prisma.seriesCache
-        .updateMany({
-          where: { sourceId: resolved.sourceId, seriesSlug },
-          data,
-        })
-        .catch(() => {
-          /* row may not exist yet on first visit */
-        });
-    }
+  if (!synopsis && prefetchedMeta.synopsis?.trim()) {
+    synopsis = prefetchedMeta.synopsis.trim();
+  }
+
+  // Back-fill DB cache with meta values when missing — fire-and-forget.
+  const backfillData: { synopsis?: string; status?: string } = {};
+  if (!seriesCacheRow?.synopsis?.trim() && prefetchedMeta.synopsis?.trim()) {
+    backfillData.synopsis = prefetchedMeta.synopsis.trim();
+  }
+  if (!cachedStatus && prefetchedMeta.status?.trim()) {
+    backfillData.status = prefetchedMeta.status.trim();
+  }
+  if (Object.keys(backfillData).length > 0) {
+    void prisma.seriesCache
+      .updateMany({ where: { sourceId: resolved.sourceId, seriesSlug }, data: backfillData })
+      .catch(() => { /* row may not exist yet on first visit */ });
   }
 
   const coverImageUrl =
     resolved.coverImageUrl ?? seriesCacheRow?.coverImageUrl ?? null;
 
-  const seriesStatus = await resolveSeriesStatusForReader(
-    resolved.sourceId,
-    resolved.sourceKey,
-    seriesSlug,
-  );
+  // Reuse the prefetched meta for status instead of making another async call.
+  const rawStatus = cachedStatus || prefetchedMeta.status?.trim() || null;
+  const seriesStatus = formatSeriesStatusForReader(rawStatus);
 
   return {
     seriesSlug: resolved.seriesSlug,

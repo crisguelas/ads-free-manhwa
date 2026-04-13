@@ -172,7 +172,25 @@ export async function resolveSeriesContextForUser(
   }
 
   if (!liveEntry) {
-    return null;
+    // Last resort: Check our database cache for things found via search or older browse activity
+    const dbSeries = await prisma.seriesCache.findFirst({
+      where: { seriesSlug },
+      include: { source: { select: { id: true, key: true, name: true, baseUrl: true } } },
+    });
+
+    if (!dbSeries) {
+      return null;
+    }
+
+    return {
+      seriesSlug,
+      seriesTitle: decodeBasicHtmlEntities(dbSeries.title).trim(),
+      sourceId: dbSeries.source.id,
+      sourceKey: dbSeries.source.key,
+      sourceName: dbSeries.source.name,
+      sourceBaseUrl: dbSeries.source.baseUrl,
+      coverImageUrl: dbSeries.coverImageUrl,
+    };
   }
 
   const sourceRow = await prisma.source.findFirst({

@@ -130,36 +130,26 @@ export async function resolveSeriesContextForUser(
     };
   }
 
-  const catalogEntry = CATALOG_HIGHLIGHTS.find((h) => h.seriesSlug === seriesSlug);
-  if (catalogEntry) {
-    const sourceRow = await prisma.source.findFirst({
-      where: {
-        key: catalogEntry.sourceKey,
-        isEnabled: true,
-      },
-      select: {
-        id: true,
-        key: true,
-        name: true,
-        baseUrl: true,
-      },
-    });
+  // Next, check our persistent Database Cache. 
+  // This handles everything found via Search or older browse activity.
+  const cachedHit = await prisma.seriesCache.findFirst({
+    where: { seriesSlug },
+    include: { source: { select: { id: true, key: true, name: true, baseUrl: true } } },
+  });
 
-    if (!sourceRow) {
-      return null;
-    }
-
+  if (cachedHit) {
     return {
       seriesSlug,
-      seriesTitle: decodeBasicHtmlEntities(catalogEntry.title).trim(),
-      sourceId: sourceRow.id,
-      sourceKey: sourceRow.key,
-      sourceName: sourceRow.name,
-      sourceBaseUrl: sourceRow.baseUrl,
-      coverImageUrl: catalogEntry.coverImageUrl ?? null,
+      seriesTitle: decodeBasicHtmlEntities(cachedHit.title).trim(),
+      sourceId: cachedHit.source.id,
+      sourceKey: cachedHit.source.key,
+      sourceName: cachedHit.source.name,
+      sourceBaseUrl: cachedHit.source.baseUrl,
+      coverImageUrl: cachedHit.coverImageUrl,
     };
   }
 
+  // Last resort: Live Scrape (only for brand new series not yet in our search/cache maps)
   const [asuraList, flameList] = await Promise.all([
     buildLiveBrowseCatalogForSource("asura-scans"),
     buildLiveBrowseCatalogForSource("flame-scans"),
@@ -172,25 +162,7 @@ export async function resolveSeriesContextForUser(
   }
 
   if (!liveEntry) {
-    // Last resort: Check our database cache for things found via search or older browse activity
-    const dbSeries = await prisma.seriesCache.findFirst({
-      where: { seriesSlug },
-      include: { source: { select: { id: true, key: true, name: true, baseUrl: true } } },
-    });
-
-    if (!dbSeries) {
-      return null;
-    }
-
-    return {
-      seriesSlug,
-      seriesTitle: decodeBasicHtmlEntities(dbSeries.title).trim(),
-      sourceId: dbSeries.source.id,
-      sourceKey: dbSeries.source.key,
-      sourceName: dbSeries.source.name,
-      sourceBaseUrl: dbSeries.source.baseUrl,
-      coverImageUrl: dbSeries.coverImageUrl,
-    };
+    return null;
   }
 
   const sourceRow = await prisma.source.findFirst({

@@ -1448,6 +1448,27 @@ pm run build) passed successfully.
 
 ---
 
+### 2026-04-13 - Flame browse JSON fallback for full catalog
+
+**Objective**
+- Fix recurring Flame fallback state (5 curated series only) and missing latest-chapter labels in environments where inline browse HTML parsing is unreliable.
+
+**Changes made**
+- `lib/live-source-browse.ts`:
+  - Added parsing for Flame Next.js `buildId` from browse HTML and a fallback fetch of `/_next/data/<buildId>/browse.json`.
+  - Added row mapping helper reused by both HTML and JSON browse paths.
+  - Updated home-latest recency loader to use HTML-first, JSON-fallback retrieval before chapter enrichment.
+  - Updated browse-catalog loader to use JSON fallback when inline `__NEXT_DATA__` extraction yields zero rows.
+
+**Verification**
+- `npm run lint`
+- `npm run build`
+
+**Next**
+- If Flame blocks both HTML and `_next/data` in production, persist last-known-good Flame rows in DB and serve those during outages.
+
+---
+
 ### 2026-04-13 - Flame home latest: chapter titles + OG covers (Vercel reliability)
 
 **Objective**

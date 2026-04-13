@@ -229,6 +229,18 @@ type FlameBrowseSeriesJson = {
 };
 
 /**
+ * Maps parsed Flame browse JSON entries into app rows.
+ */
+function mapFlameBrowseSeriesToRows(
+  series: FlameBrowseSeriesJson[],
+): LiveBrowseRow[] {
+  return series.flatMap((s) => {
+    const row = flameJsonSeriesToRow(s);
+    return row ? [row] : [];
+  });
+}
+
+/**
  * Parses Flame browse `__NEXT_DATA__` series array (SSR includes full list).
  */
 export function parseFlameBrowseSeriesHtml(html: string): LiveBrowseRow[] {
@@ -250,10 +262,7 @@ export function parseFlameBrowseSeriesHtml(html: string): LiveBrowseRow[] {
   if (!Array.isArray(series)) {
     return [];
   }
-  return series.flatMap((s) => {
-    const row = flameJsonSeriesToRow(s);
-    return row ? [row] : [];
-  });
+  return mapFlameBrowseSeriesToRows(series);
 }
 
 /**
@@ -335,6 +344,42 @@ export function parseFlameBrowseSeriesByRecency(html: string): LiveBrowseRow[] {
 }
 
 /**
+ * Parses the active Next.js build id from Flame HTML so `_next/data/<buildId>/browse.json` can be fetched directly.
+ */
+function parseFlameBuildIdFromHtml(html: string): string | null {
+  const match = html.match(/"buildId":"([^"]+)"/);
+  return match?.[1] ?? null;
+}
+
+/**
+ * Fetches Flame browse JSON through Next data endpoint as a fallback when HTML parsing is unreliable.
+ */
+async function fetchFlameBrowseSeriesFromNextDataJson(
+  html: string,
+): Promise<FlameBrowseSeriesJson[]> {
+  const buildId = parseFlameBuildIdFromHtml(html);
+  if (!buildId) {
+    return [];
+  }
+  const jsonUrl = `https://flamecomics.xyz/_next/data/${buildId}/browse.json`;
+  const jsonText = await fetchHtmlWithOptions(jsonUrl, {
+    timeoutMs: 22_000,
+    referer: FLAME_BROWSE_URL,
+  });
+  if (!jsonText) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(jsonText) as {
+      pageProps?: { series?: FlameBrowseSeriesJson[] };
+    };
+    return Array.isArray(parsed.pageProps?.series) ? parsed.pageProps.series : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Parses Flame browse card links and extracts chapter labels keyed by series slug.
  * Expected pattern: `/series/{id}/{token}` or `/novel/{id}/{token}` with visible "Chapter ..." text.
  */
@@ -397,11 +442,36 @@ async function fetchFlameBrowseRows(): Promise<LiveBrowseRow[]> {
   if (!html) {
     return [];
   }
-  const rows = parseFlameBrowseSeriesHtml(html);
-  if (rows.length > 0) {
-    return rows;
+  const htmlRows = parseFlameBrowseSeriesHtml(html);
+  if (htmlRows.length > 0) {
+    return htmlRows;
+  }
+  const jsonSeries = await fetchFlameBrowseSeriesFromNextDataJson(html);
+  const jsonRows = mapFlameBrowseSeriesToRows(jsonSeries);
+  if (jsonRows.length > 0) {
+    return jsonRows;
   }
   return [];
+}
+
+/**
+ * Fetches Flame rows ordered by recency; falls back to Next data JSON when inline chapter links are unavailable.
+ */
+async function fetchFlameBrowseRowsByRecency(): Promise<LiveBrowseRow[]> {
+  const html = await fetchFlameBrowseHtml();
+  if (!html) {
+    return [];
+  }
+  const fromHtml = parseFlameBrowseSeriesByRecency(html);
+  if (fromHtml.length > 0) {
+    return fromHtml;
+  }
+  const jsonSeries = await fetchFlameBrowseSeriesFromNextDataJson(html);
+  if (jsonSeries.length === 0) {
+    return [];
+  }
+  const sorted = [...jsonSeries].sort((a, b) => (b.last_edit ?? 0) - (a.last_edit ?? 0));
+  return mapFlameBrowseSeriesToRows(sorted);
 }
 
 /**
@@ -564,11 +634,7 @@ export function getHomeLatestAsuraHighlights(): Promise<CatalogHighlight[]> {
 export function getHomeLatestFlameHighlights(): Promise<CatalogHighlight[]> {
   return unstable_cache(
     async () => {
-      const html = await fetchFlameBrowseHtml();
-      if (!html) {
-        return fallbackFlameLatestHighlights();
-      }
-      let rows = parseFlameBrowseSeriesByRecency(html)
+      let rows = (await fetchFlameBrowseRowsByRecency())
         .filter((row) => !isFlameWebNovelSeriesSlug(row.seriesSlug))
         .slice(0, HOME_LATEST_PER_SOURCE);
       if (rows.length === 0) {

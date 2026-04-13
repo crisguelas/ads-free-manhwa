@@ -10,6 +10,24 @@ This file tracks implementation steps so future developers can understand what w
 
 ## Timeline
 
+### 2026-04-14 - Robust Flame Comics Chapter Scraping (JSON-based)
+
+**Objective**
+- Fix "Latest chapter unavailable" for Flame Comics on the home dashboard and resolve brittle HTML scraping for individual series pages.
+
+**Changes made**
+- `lib/live-source-browse.ts`: switched "Latest Updates" discovery to fetch the Flame home page and parse the robust `__NEXT_DATA__` JSON (`latestEntries`) which contains chapters. This avoids brittle HTML scraping of the browse page.
+- `lib/sources/adapters/flame-source-adapter.ts`: updated the regex and added HTML tag stripping to `extractChapterSummaries` to correctly parse nested tags (e.g., `<div>`, `<p>`) within chapter labels.
+- `lib/live-source-browse.ts`: updated `FlameBrowseSeriesJson` type and map functions to support embedded chapter data.
+
+**Verification**
+- Verified with scratch scripts `analyze-flame-home.js` and `verify-flame-fix.js` that both JSON parsing and HTML regex fallbacks work correctly and extract accurate chapter labels (e.g., "Chapter 216.00").
+
+**Next**
+- None.
+
+---
+
 ### 2026-04-11 - Series detail: status pill on cover (Asura-style)
 
 **Objective**

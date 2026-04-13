@@ -152,14 +152,17 @@ function extractChapterSummaries(
   const { numericId, contentKind } = parsed;
   const titleByToken = new Map<string, string>();
   const anchorPattern = new RegExp(
-    `<a[^>]+href="(?:${escapeRegex(FLAME_BASE_URL)})?/${contentKind}/${numericId}/([a-f0-9]{16})"[^>]*>([^<]*)</a>`,
+    `<a[^>]+href="(?:${escapeRegex(FLAME_BASE_URL)})?/${contentKind}/${numericId}/([a-f0-9]{16})"[^>]*>([\\s\\S]*?)</a>`,
     "gi",
   );
   for (const match of html.matchAll(anchorPattern)) {
     const token = match[1]?.toLowerCase();
-    const label = match[2]?.trim();
-    if (token && label && !titleByToken.has(token)) {
-      titleByToken.set(token, decodeBasicHtmlEntities(label));
+    const rawLabel = match[2];
+    if (token && rawLabel && !titleByToken.has(token)) {
+      const label = rawLabel.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+      if (label) {
+        titleByToken.set(token, decodeBasicHtmlEntities(label));
+      }
     }
   }
 

@@ -226,6 +226,12 @@ type FlameBrowseSeriesJson = {
   title: string;
   cover?: string;
   last_edit?: number;
+  /** Embedded chapters (on home page JSON) for immediate label resolution. */
+  chapters?: Array<{
+    chapter: string;
+    token: string;
+    title?: string;
+  }>;
 };
 
 /**
@@ -300,12 +306,16 @@ function flameJsonSeriesToRow(s: FlameBrowseSeriesJson): LiveBrowseRow | null {
   const file =
     typeof s.cover === "string" && s.cover.length > 0 ? s.cover : "thumbnail.png";
   const query = s.last_edit != null ? `?${s.last_edit}` : "";
-  return {
+  const row: LiveBrowseRow = {
     seriesSlug,
     title: decodeBasicHtmlEntities(s.title),
     coverImageUrl: `https://cdn.flamecomics.xyz/uploads/images/${imageFolder}/${file}${query}`,
     sourceKey: "flame-scans",
   };
+  if (s.chapters?.[0]?.chapter) {
+    row.latestChapterLabel = `Chapter ${s.chapters[0].chapter}`;
+  }
+  return row;
 }
 
 /**
@@ -629,21 +639,50 @@ export function getHomeLatestAsuraHighlights(): Promise<CatalogHighlight[]> {
 }
 
 /**
- * Loads Flame series ordered by `last_edit` for the home dashboard.
+ * Loads Flame series from the home page JSON (Latest row) for the dashboard.
+ * Home page JSON contains robust chapter labels in its embedded state.
  */
 export function getHomeLatestFlameHighlights(): Promise<CatalogHighlight[]> {
   return unstable_cache(
     async () => {
-      let rows = (await fetchFlameBrowseRowsByRecency())
-        .filter((row) => !isFlameWebNovelSeriesSlug(row.seriesSlug))
-        .slice(0, HOME_LATEST_PER_SOURCE);
-      if (rows.length === 0) {
+      const html = await fetchHtmlWithOptions("https://flamecomics.xyz/", {
+        timeoutMs: 25_000,
+      });
+      if (!html) {
         return fallbackFlameLatestHighlights();
       }
-      rows = await enrichFlameRowsWithLatestChapterLabels(rows);
-      return rows.map(liveRowToHighlight);
+      const match = html.match(
+        /<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/,
+      );
+      if (!match?.[1]) {
+        return fallbackFlameLatestHighlights();
+      }
+      try {
+        const data = JSON.parse(match[1]);
+        const blocks = data.props?.pageProps?.latestEntries?.blocks;
+        if (!Array.isArray(blocks)) {
+          return fallbackFlameLatestHighlights();
+        }
+        // First block is usually "Latest" or "Popular" grid on home.
+        const firstBlock = blocks[0];
+        if (!Array.isArray(firstBlock?.series)) {
+          return fallbackFlameLatestHighlights();
+        }
+        let rows = mapFlameBrowseSeriesToRows(firstBlock.series as FlameBrowseSeriesJson[])
+          .filter((row) => !isFlameWebNovelSeriesSlug(row.seriesSlug))
+          .slice(0, HOME_LATEST_PER_SOURCE);
+        
+        if (rows.length === 0) {
+          return fallbackFlameLatestHighlights();
+        }
+        // Even with JSON, we run the enricher to handle any cards missing chapter info (safety).
+        rows = await enrichFlameRowsWithLatestChapterLabels(rows);
+        return rows.map(liveRowToHighlight);
+      } catch {
+        return fallbackFlameLatestHighlights();
+      }
     },
-    ["home-latest-flame", "v8"],
+    ["home-latest-flame", "v9"],
     { revalidate: HOME_LATEST_REVALIDATE_SEC },
   )();
 }

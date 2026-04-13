@@ -42,11 +42,7 @@ export function SourceBrowseView({
             <span className="text-zinc-800">{label}</span>
           </nav>
           <h1 className="text-2xl font-bold tracking-tight text-zinc-900 sm:text-3xl">{label}</h1>
-          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-zinc-600">
-            Series list from the source’s public browse page (cached), plus any curated-only entries. Open a title for
-            chapters in the reader.
-          </p>
-          <p className="mt-3 text-xs text-zinc-500">
+          <p className="mt-2 text-xs text-zinc-500 text-zinc-500">
             {totalSeries} series
             {totalPages > 1 ? ` · Page ${currentPage} of ${totalPages}` : null}
           </p>

@@ -75,6 +75,28 @@ This file tracks implementation steps so future developers can understand what w
 
 ---
 
+### 2026-04-15 - Flame fallback tier logging for Vercel diagnostics
+
+**Objective**
+- Make production troubleshooting explicit by logging which Flame fallback tier is used for home latest and browse catalog paths.
+
+**Changes made**
+- `lib/live-source-browse.ts`:
+  - Added `logFlameTier()` helper that emits consistent one-line markers: `[flame-live] scope=... tier=...`.
+  - Added tier logs on all major Flame decision branches:
+    - home latest: `home-json`, `browse-recency`, `curated-fallback`
+    - browse catalog: `cached-live-rows`, `cache-retry-direct-fetch`, `second-direct-fetch`, `curated-fallback`, plus parser-source tiers (`browse-html-next-data`, `browse-next-data-json`, `home-build-json`, `home-latest-bridge`, `empty`).
+  - Bumped home Flame latest cache key from `v11` to `v12` so fresh rebuilds produce the new diagnostic pathing.
+
+**Verification**
+- `npm run lint`
+- `npm run build`
+
+**Next**
+- Check Vercel runtime logs for `[flame-live]` lines while loading `/` and `/browse/flame-scans` to confirm active data tier in production.
+
+---
+
 ### 2026-04-14 - Robust Flame Comics Chapter Scraping (JSON-based)
 
 **Objective**

@@ -40,6 +40,14 @@ const HOME_LATEST_PER_SOURCE = 12;
 const HOME_LATEST_REVALIDATE_SEC = 1800;
 
 /**
+ * Emits one-line trace markers so production logs can reveal which Flame fallback tier served data.
+ */
+function logFlameTier(scope: "home-latest" | "browse-catalog", tier: string, meta?: string): void {
+  const suffix = meta ? ` ${meta}` : "";
+  console.info(`[flame-live] scope=${scope} tier=${tier}${suffix}`);
+}
+
+/**
  * One series row scraped from a source’s public browse HTML (before merging with curated overrides).
  */
 export type LiveBrowseRow = {
@@ -497,11 +505,13 @@ async function fetchFlameBrowseRows(): Promise<LiveBrowseRow[]> {
   if (html) {
     const htmlRows = parseFlameBrowseSeriesHtml(html);
     if (htmlRows.length > 0) {
+      logFlameTier("browse-catalog", "browse-html-next-data", `rows=${htmlRows.length}`);
       return htmlRows;
     }
     const jsonSeries = await fetchFlameBrowseSeriesFromNextDataJson(html);
     const jsonRows = mapFlameBrowseSeriesToRows(jsonSeries);
     if (jsonRows.length > 0) {
+      logFlameTier("browse-catalog", "browse-next-data-json", `rows=${jsonRows.length}`);
       return jsonRows;
     }
   }
@@ -510,6 +520,7 @@ async function fetchFlameBrowseRows(): Promise<LiveBrowseRow[]> {
     await fetchFlameBrowseSeriesFromHomeBuildJson(),
   );
   if (homeBuildRows.length > 0) {
+    logFlameTier("browse-catalog", "home-build-json", `rows=${homeBuildRows.length}`);
     return homeBuildRows;
   }
 
@@ -529,8 +540,10 @@ async function fetchFlameBrowseRows(): Promise<LiveBrowseRow[]> {
     });
   }
   if (jsonRows.length > 0) {
+    logFlameTier("browse-catalog", "home-latest-bridge", `rows=${jsonRows.length}`);
     return jsonRows;
   }
+  logFlameTier("browse-catalog", "empty");
   return [];
 }
 
@@ -739,6 +752,7 @@ export function getHomeLatestFlameHighlights(): Promise<CatalogHighlight[]> {
               if (rows.length > 0) {
                 // Even with JSON, we run the enricher to handle any cards missing chapter info (safety).
                 rows = await enrichFlameRowsWithLatestChapterLabels(rows);
+                logFlameTier("home-latest", "home-json", `host=${homeUrl} rows=${rows.length}`);
                 return rows.map(liveRowToHighlight);
               }
             }
@@ -755,12 +769,14 @@ export function getHomeLatestFlameHighlights(): Promise<CatalogHighlight[]> {
         .slice(0, HOME_LATEST_PER_SOURCE);
       if (browseRows.length > 0) {
         const enriched = await enrichFlameRowsWithLatestChapterLabels(browseRows);
+        logFlameTier("home-latest", "browse-recency", `rows=${enriched.length}`);
         return enriched.map(liveRowToHighlight);
       }
 
+      logFlameTier("home-latest", "curated-fallback", `rows=${HOME_LATEST_PER_SOURCE}`);
       return fallbackFlameLatestHighlights();
     },
-    ["home-latest-flame", "v11"],
+    ["home-latest-flame", "v12"],
     { revalidate: HOME_LATEST_REVALIDATE_SEC },
   )();
 }
@@ -858,17 +874,22 @@ export async function buildLiveBrowseCatalogForSource(
   try {
     const live = await getCachedFlameLiveRows();
     flameRows = live.filter((row) => !isFlameWebNovelSeriesSlug(row.seriesSlug));
+    logFlameTier("browse-catalog", "cached-live-rows", `rows=${flameRows.length}`);
   } catch {
     // If cache revalidation failed, retry direct fetch once before using curated fallback.
     const retryRows = await fetchFlameBrowseRows();
     flameRows = retryRows.filter((row) => !isFlameWebNovelSeriesSlug(row.seriesSlug));
+    logFlameTier("browse-catalog", "cache-retry-direct-fetch", `rows=${flameRows.length}`);
   }
   if (flameRows.length === 0) {
     const retryRows = await fetchFlameBrowseRows();
     flameRows = retryRows.filter((row) => !isFlameWebNovelSeriesSlug(row.seriesSlug));
+    logFlameTier("browse-catalog", "second-direct-fetch", `rows=${flameRows.length}`);
   }
   if (flameRows.length === 0) {
+    logFlameTier("browse-catalog", "curated-fallback");
     return CATALOG_HIGHLIGHTS.filter((h) => h.sourceKey === "flame-scans");
   }
+  logFlameTier("browse-catalog", "merge-live-curated", `rows=${flameRows.length}`);
   return mergeFlameWithCurated(flameRows, CATALOG_HIGHLIGHTS);
 }

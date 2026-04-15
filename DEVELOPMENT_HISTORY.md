@@ -53,6 +53,28 @@ This file tracks implementation steps so future developers can understand what w
 
 ---
 
+### 2026-04-15 - Flame multi-domain fetch fallback (Vercel scrape reliability)
+
+**Objective**
+- Prevent Flame scrape failures in environments where one Flame host variant is blocked or unstable (`flamecomics.xyz` vs `www.flamecomics.xyz` vs `flamecomics.com`).
+
+**Changes made**
+- `lib/live-source-browse.ts`:
+  - Added multi-host fallback lists for Flame browse and home fetches.
+  - Updated browse HTML fetch attempts to cycle across all known host variants before failing.
+  - Updated Next-data JSON fallback (`/_next/data/<buildId>/browse.json`) to try all host variants with per-host referers.
+  - Updated home latest loader to attempt all host variants before moving to browse-recency fallback.
+  - Bumped home Flame latest cache key to `v11` so deployments invalidate stale fallback-heavy cache entries.
+
+**Verification**
+- `npm run lint`
+- `npm run build`
+
+**Next**
+- Re-check production `/browse/flame-scans` and home Flame latest after deploy; if a host keeps failing, add per-host success/failure log markers for quick ops visibility.
+
+---
+
 ### 2026-04-14 - Robust Flame Comics Chapter Scraping (JSON-based)
 
 **Objective**

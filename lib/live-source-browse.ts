@@ -11,7 +11,16 @@ import { getSourceAdapter } from "@/lib/sources/registry";
 import { fetchHtml, fetchHtmlWithOptions } from "@/lib/fetch-utils";
 import { fetchFlameSeriesOverviewHomeExtras } from "@/lib/sources/adapters/flame-source-adapter";
 const ASURA_BASE_URL = "https://asurascans.com";
-const FLAME_BROWSE_URL = "https://flamecomics.xyz/browse";
+const FLAME_BROWSE_URLS = [
+  "https://flamecomics.xyz/browse",
+  "https://www.flamecomics.xyz/browse",
+  "https://flamecomics.com/browse",
+] as const;
+const FLAME_HOME_URLS = [
+  "https://flamecomics.xyz/",
+  "https://www.flamecomics.xyz/",
+  "https://flamecomics.com/",
+] as const;
 /**
  * Safety cap for Asura `/browse?page=` walks. The site paginates beyond the few page links visible on page 1,
  * so we keep requesting until a page returns zero cards (see `fetchAllAsuraBrowseRows`).
@@ -371,23 +380,35 @@ async function fetchFlameBrowseSeriesFromNextDataJson(
   if (!buildId) {
     return [];
   }
-  const jsonUrl = `https://flamecomics.xyz/_next/data/${buildId}/browse.json`;
-  const jsonText = await fetchHtmlWithOptions(jsonUrl, {
-    timeoutMs: 30_000,
-    referer: FLAME_BROWSE_URL,
-    retries: 1,
-  });
-  if (!jsonText) {
-    return [];
+  for (const base of [
+    "https://flamecomics.xyz",
+    "https://www.flamecomics.xyz",
+    "https://flamecomics.com",
+  ]) {
+    const jsonUrl = `${base}/_next/data/${buildId}/browse.json`;
+    const jsonText = await fetchHtmlWithOptions(jsonUrl, {
+      timeoutMs: 30_000,
+      referer: `${base}/browse`,
+      retries: 1,
+    });
+    if (!jsonText) {
+      continue;
+    }
+    try {
+      const parsed = JSON.parse(jsonText) as {
+        pageProps?: { series?: FlameBrowseSeriesJson[] };
+      };
+      const series = Array.isArray(parsed.pageProps?.series)
+        ? parsed.pageProps.series
+        : [];
+      if (series.length > 0) {
+        return series;
+      }
+    } catch {
+      // Try the next domain.
+    }
   }
-  try {
-    const parsed = JSON.parse(jsonText) as {
-      pageProps?: { series?: FlameBrowseSeriesJson[] };
-    };
-    return Array.isArray(parsed.pageProps?.series) ? parsed.pageProps.series : [];
-  } catch {
-    return [];
-  }
+  return [];
 }
 
 /**
@@ -395,14 +416,20 @@ async function fetchFlameBrowseSeriesFromNextDataJson(
  * and request `/_next/data/<buildId>/browse.json` directly.
  */
 async function fetchFlameBrowseSeriesFromHomeBuildJson(): Promise<FlameBrowseSeriesJson[]> {
-  const homeHtml = await fetchHtmlWithOptions("https://flamecomics.xyz/", {
-    timeoutMs: 30_000,
-    retries: 1,
-  });
-  if (!homeHtml) {
-    return [];
+  for (const url of FLAME_HOME_URLS) {
+    const homeHtml = await fetchHtmlWithOptions(url, {
+      timeoutMs: 30_000,
+      retries: 1,
+    });
+    if (!homeHtml) {
+      continue;
+    }
+    const series = await fetchFlameBrowseSeriesFromNextDataJson(homeHtml);
+    if (series.length > 0) {
+      return series;
+    }
   }
-  return fetchFlameBrowseSeriesFromNextDataJson(homeHtml);
+  return [];
 }
 
 /**
@@ -439,16 +466,17 @@ function parseFlameLatestChapterLabelsBySeriesSlug(
  * (extra `?page=` URLs repeat the same payload); we do not paginate network requests for Flame.
  */
 async function fetchFlameBrowseHtml(): Promise<string> {
-  const attemptUrls = [
-    FLAME_BROWSE_URL,
-    `${FLAME_BROWSE_URL}/`,
-    `${FLAME_BROWSE_URL}?page=1`,
-    `${FLAME_BROWSE_URL}?_=${Date.now()}`,
-  ];
+  const attemptUrls: string[] = [];
+  for (const base of FLAME_BROWSE_URLS) {
+    attemptUrls.push(base);
+    attemptUrls.push(`${base}/`);
+    attemptUrls.push(`${base}?page=1`);
+    attemptUrls.push(`${base}?_=${Date.now()}`);
+  }
   for (const url of attemptUrls) {
     const html = await fetchHtmlWithOptions(url, {
       timeoutMs: 30_000,
-      referer: "https://flamecomics.xyz/",
+      referer: url,
       retries: 1,
     });
     if (!html) {
@@ -687,11 +715,14 @@ export function getHomeLatestAsuraHighlights(): Promise<CatalogHighlight[]> {
 export function getHomeLatestFlameHighlights(): Promise<CatalogHighlight[]> {
   return unstable_cache(
     async () => {
-      const html = await fetchHtmlWithOptions("https://flamecomics.xyz/", {
-        timeoutMs: 25_000,
-        retries: 1,
-      });
-      if (html) {
+      for (const homeUrl of FLAME_HOME_URLS) {
+        const html = await fetchHtmlWithOptions(homeUrl, {
+          timeoutMs: 25_000,
+          retries: 1,
+        });
+        if (!html) {
+          continue;
+        }
         const match = html.match(
           /<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/,
         );
@@ -712,7 +743,7 @@ export function getHomeLatestFlameHighlights(): Promise<CatalogHighlight[]> {
               }
             }
           } catch {
-            // Fall through to browse-based fallback below.
+            // Try next host, then browse-based fallback below.
           }
         }
       }
@@ -729,7 +760,7 @@ export function getHomeLatestFlameHighlights(): Promise<CatalogHighlight[]> {
 
       return fallbackFlameLatestHighlights();
     },
-    ["home-latest-flame", "v10"],
+    ["home-latest-flame", "v11"],
     { revalidate: HOME_LATEST_REVALIDATE_SEC },
   )();
 }

@@ -365,16 +365,17 @@ function parseFlameBuildIdFromHtml(html: string): string | null {
  * Fetches Flame browse JSON through Next data endpoint as a fallback when HTML parsing is unreliable.
  */
 async function fetchFlameBrowseSeriesFromNextDataJson(
-  html: string,
+  htmlOrBuildIdSource: string,
 ): Promise<FlameBrowseSeriesJson[]> {
-  const buildId = parseFlameBuildIdFromHtml(html);
+  const buildId = parseFlameBuildIdFromHtml(htmlOrBuildIdSource);
   if (!buildId) {
     return [];
   }
   const jsonUrl = `https://flamecomics.xyz/_next/data/${buildId}/browse.json`;
   const jsonText = await fetchHtmlWithOptions(jsonUrl, {
-    timeoutMs: 22_000,
+    timeoutMs: 30_000,
     referer: FLAME_BROWSE_URL,
+    retries: 1,
   });
   if (!jsonText) {
     return [];
@@ -387,6 +388,21 @@ async function fetchFlameBrowseSeriesFromNextDataJson(
   } catch {
     return [];
   }
+}
+
+/**
+ * Fallback for environments where `/browse` may intermittently fail: derive the Next build id from the home page
+ * and request `/_next/data/<buildId>/browse.json` directly.
+ */
+async function fetchFlameBrowseSeriesFromHomeBuildJson(): Promise<FlameBrowseSeriesJson[]> {
+  const homeHtml = await fetchHtmlWithOptions("https://flamecomics.xyz/", {
+    timeoutMs: 30_000,
+    retries: 1,
+  });
+  if (!homeHtml) {
+    return [];
+  }
+  return fetchFlameBrowseSeriesFromNextDataJson(homeHtml);
 }
 
 /**
@@ -431,8 +447,9 @@ async function fetchFlameBrowseHtml(): Promise<string> {
   ];
   for (const url of attemptUrls) {
     const html = await fetchHtmlWithOptions(url, {
-      timeoutMs: 22_000,
+      timeoutMs: 30_000,
       referer: "https://flamecomics.xyz/",
+      retries: 1,
     });
     if (!html) {
       continue;
@@ -449,15 +466,40 @@ async function fetchFlameBrowseHtml(): Promise<string> {
  */
 async function fetchFlameBrowseRows(): Promise<LiveBrowseRow[]> {
   const html = await fetchFlameBrowseHtml();
-  if (!html) {
-    return [];
+  if (html) {
+    const htmlRows = parseFlameBrowseSeriesHtml(html);
+    if (htmlRows.length > 0) {
+      return htmlRows;
+    }
+    const jsonSeries = await fetchFlameBrowseSeriesFromNextDataJson(html);
+    const jsonRows = mapFlameBrowseSeriesToRows(jsonSeries);
+    if (jsonRows.length > 0) {
+      return jsonRows;
+    }
   }
-  const htmlRows = parseFlameBrowseSeriesHtml(html);
-  if (htmlRows.length > 0) {
-    return htmlRows;
+
+  const homeBuildRows = mapFlameBrowseSeriesToRows(
+    await fetchFlameBrowseSeriesFromHomeBuildJson(),
+  );
+  if (homeBuildRows.length > 0) {
+    return homeBuildRows;
   }
-  const jsonSeries = await fetchFlameBrowseSeriesFromNextDataJson(html);
-  const jsonRows = mapFlameBrowseSeriesToRows(jsonSeries);
+
+  // Last resort: home latest block gives a subset, but avoids collapsing to curated-only rows during scrape incidents.
+  const homeLatest = await getHomeLatestFlameHighlights();
+  const jsonRows: LiveBrowseRow[] = [];
+  for (const h of homeLatest) {
+    if (h.sourceKey !== "flame-scans") {
+      continue;
+    }
+    jsonRows.push({
+      seriesSlug: h.seriesSlug,
+      title: h.title,
+      coverImageUrl: h.coverImageUrl,
+      sourceKey: "flame-scans",
+      latestChapterLabel: h.latestChapter?.title,
+    });
+  }
   if (jsonRows.length > 0) {
     return jsonRows;
   }
@@ -647,42 +689,47 @@ export function getHomeLatestFlameHighlights(): Promise<CatalogHighlight[]> {
     async () => {
       const html = await fetchHtmlWithOptions("https://flamecomics.xyz/", {
         timeoutMs: 25_000,
+        retries: 1,
       });
-      if (!html) {
-        return fallbackFlameLatestHighlights();
-      }
-      const match = html.match(
-        /<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/,
-      );
-      if (!match?.[1]) {
-        return fallbackFlameLatestHighlights();
-      }
-      try {
-        const data = JSON.parse(match[1]);
-        const blocks = data.props?.pageProps?.latestEntries?.blocks;
-        if (!Array.isArray(blocks)) {
-          return fallbackFlameLatestHighlights();
+      if (html) {
+        const match = html.match(
+          /<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/,
+        );
+        if (match?.[1]) {
+          try {
+            const data = JSON.parse(match[1]);
+            const blocks = data.props?.pageProps?.latestEntries?.blocks;
+            if (Array.isArray(blocks) && Array.isArray(blocks[0]?.series)) {
+              let rows = mapFlameBrowseSeriesToRows(
+                blocks[0].series as FlameBrowseSeriesJson[],
+              )
+                .filter((row) => !isFlameWebNovelSeriesSlug(row.seriesSlug))
+                .slice(0, HOME_LATEST_PER_SOURCE);
+              if (rows.length > 0) {
+                // Even with JSON, we run the enricher to handle any cards missing chapter info (safety).
+                rows = await enrichFlameRowsWithLatestChapterLabels(rows);
+                return rows.map(liveRowToHighlight);
+              }
+            }
+          } catch {
+            // Fall through to browse-based fallback below.
+          }
         }
-        // First block is usually "Latest" or "Popular" grid on home.
-        const firstBlock = blocks[0];
-        if (!Array.isArray(firstBlock?.series)) {
-          return fallbackFlameLatestHighlights();
-        }
-        let rows = mapFlameBrowseSeriesToRows(firstBlock.series as FlameBrowseSeriesJson[])
-          .filter((row) => !isFlameWebNovelSeriesSlug(row.seriesSlug))
-          .slice(0, HOME_LATEST_PER_SOURCE);
-        
-        if (rows.length === 0) {
-          return fallbackFlameLatestHighlights();
-        }
-        // Even with JSON, we run the enricher to handle any cards missing chapter info (safety).
-        rows = await enrichFlameRowsWithLatestChapterLabels(rows);
-        return rows.map(liveRowToHighlight);
-      } catch {
-        return fallbackFlameLatestHighlights();
       }
+
+      // Production resilience fallback: if Flame home JSON fetch/parsing fails, use browse recency rows
+      // (full live scrape path) before dropping to curated-only cards.
+      const browseRows = (await fetchFlameBrowseRowsByRecency())
+        .filter((row) => !isFlameWebNovelSeriesSlug(row.seriesSlug))
+        .slice(0, HOME_LATEST_PER_SOURCE);
+      if (browseRows.length > 0) {
+        const enriched = await enrichFlameRowsWithLatestChapterLabels(browseRows);
+        return enriched.map(liveRowToHighlight);
+      }
+
+      return fallbackFlameLatestHighlights();
     },
-    ["home-latest-flame", "v9"],
+    ["home-latest-flame", "v10"],
     { revalidate: HOME_LATEST_REVALIDATE_SEC },
   )();
 }

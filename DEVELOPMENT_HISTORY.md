@@ -10,6 +10,49 @@ This file tracks implementation steps so future developers can understand what w
 
 ## Timeline
 
+### 2026-04-15 - Flame browse fallback hardening (Vercel resilience)
+
+**Objective**
+- Stop `/browse/flame-scans` from collapsing to the 5-item curated fallback when Flame browse fetch/parsing intermittently fails in serverless production.
+
+**Changes made**
+- `lib/fetch-utils.ts`: added configurable retry support (`retries`) in `fetchHtmlWithOptions` so upstream transient failures/timeouts can recover automatically without returning empty HTML on first failure.
+- `lib/live-source-browse.ts`:
+  - increased Flame browse and Next-data fetch timeout windows and enabled retries.
+  - added `fetchFlameBrowseSeriesFromHomeBuildJson()` fallback: parse `buildId` from Flame home HTML and fetch `/_next/data/<buildId>/browse.json` directly when `/browse` HTML path fails.
+  - hardened `fetchFlameBrowseRows()` to chain fallbacks: browse HTML -> browse Next-data JSON -> home build-id browse JSON -> home latest subset (instead of immediate curated-only collapse).
+  - enabled one retry on Flame home latest fetch (`getHomeLatestFlameHighlights`) for consistency with production network variance.
+
+**Verification**
+- `npm run lint`
+- `npm run test`
+- `npm run build`
+
+**Next**
+- Monitor production logs for Flame upstream anti-bot/timeout patterns; if instability persists, persist last-known-good Flame browse rows in DB for outage-proof full-catalog fallback.
+
+---
+
+### 2026-04-15 - Flame home latest fallback hardening (avoid unavailable chapters)
+
+**Objective**
+- Ensure the home "Latest Updates" section for Flame Comics keeps live chapter labels when Flame home JSON fails, instead of dropping straight to curated cards with "Latest chapter unavailable".
+
+**Changes made**
+- `lib/live-source-browse.ts`:
+  - Hardened `getHomeLatestFlameHighlights()` to avoid immediate curated fallback on home JSON parse/fetch failures.
+  - Added browse-based resilience fallback in this order: home `latestEntries` JSON -> browse recency scrape (`fetchFlameBrowseRowsByRecency`) -> chapter enrichment -> curated fallback.
+  - Bumped cache key for home Flame latest (`home-latest-flame` to `v10`) so stale fallback-only cache is invalidated after deploy.
+
+**Verification**
+- `npm run lint`
+- `npm run build`
+
+**Next**
+- Confirm production home route now consistently shows real Flame chapter labels; if upstream instability remains, add structured logs indicating which fallback tier served each rebuild.
+
+---
+
 ### 2026-04-14 - Robust Flame Comics Chapter Scraping (JSON-based)
 
 **Objective**

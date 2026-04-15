@@ -523,26 +523,6 @@ async function fetchFlameBrowseRows(): Promise<LiveBrowseRow[]> {
     logFlameTier("browse-catalog", "home-build-json", `rows=${homeBuildRows.length}`);
     return homeBuildRows;
   }
-
-  // Last resort: home latest block gives a subset, but avoids collapsing to curated-only rows during scrape incidents.
-  const homeLatest = await getHomeLatestFlameHighlights();
-  const jsonRows: LiveBrowseRow[] = [];
-  for (const h of homeLatest) {
-    if (h.sourceKey !== "flame-scans") {
-      continue;
-    }
-    jsonRows.push({
-      seriesSlug: h.seriesSlug,
-      title: h.title,
-      coverImageUrl: h.coverImageUrl,
-      sourceKey: "flame-scans",
-      latestChapterLabel: h.latestChapter?.title,
-    });
-  }
-  if (jsonRows.length > 0) {
-    logFlameTier("browse-catalog", "home-latest-bridge", `rows=${jsonRows.length}`);
-    return jsonRows;
-  }
   logFlameTier("browse-catalog", "empty");
   return [];
 }
@@ -852,7 +832,7 @@ function getCachedFlameLiveRows(): Promise<LiveBrowseRow[]> {
       }
       return rows;
     },
-    ["live-flame-browse-series", "v8"],
+    ["live-flame-browse-series", "v9"],
     { revalidate: 3600 },
   )();
 }

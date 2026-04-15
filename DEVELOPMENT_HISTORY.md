@@ -97,6 +97,25 @@ This file tracks implementation steps so future developers can understand what w
 
 ---
 
+### 2026-04-15 - Flame browse cache reset + remove subset bridge fallback
+
+**Objective**
+- Stop `/browse/flame-scans` from reusing a small fallback subset as if it were full live browse data, and force Vercel to rebuild Flame browse cache from fresh source fetches.
+
+**Changes made**
+- `lib/live-source-browse.ts`:
+  - Removed the `home-latest-bridge` fallback branch from `fetchFlameBrowseRows()` so browse cache rows are only sourced from browse/home-build scrape paths (not from the limited home latest subset).
+  - Bumped `live-flame-browse-series` cache key from `v8` to `v9` to invalidate stale Flame browse cache entries.
+
+**Verification**
+- `npm run lint`
+- `npm run build`
+
+**Next**
+- Re-check `/browse/flame-scans`; if it still resolves to curated fallback, use `[flame-live]` logs to identify failing scrape tier and add per-tier HTTP status logging.
+
+---
+
 ### 2026-04-14 - Robust Flame Comics Chapter Scraping (JSON-based)
 
 **Objective**

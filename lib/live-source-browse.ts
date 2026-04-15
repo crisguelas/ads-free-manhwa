@@ -21,6 +21,26 @@ const FLAME_HOME_URLS = [
   "https://www.flamecomics.xyz/",
   "https://flamecomics.com/",
 ] as const;
+
+/**
+ * Builds browser-like fetch options for Flame hosts so serverless requests look closer to a real navigation.
+ */
+function getFlameFetchOptions(
+  hostOrigin: string,
+  refererPath: string,
+  timeoutMs: number,
+  retries: number,
+) {
+  return {
+    timeoutMs,
+    retries,
+    referer: `${hostOrigin}${refererPath}`,
+    origin: hostOrigin,
+    extraHeaders: {
+      "sec-fetch-site": "same-origin",
+    },
+  };
+}
 /**
  * Safety cap for Asura `/browse?page=` walks. The site paginates beyond the few page links visible on page 1,
  * so we keep requesting until a page returns zero cards (see `fetchAllAsuraBrowseRows`).
@@ -394,11 +414,10 @@ async function fetchFlameBrowseSeriesFromNextDataJson(
     "https://flamecomics.com",
   ]) {
     const jsonUrl = `${base}/_next/data/${buildId}/browse.json`;
-    const jsonText = await fetchHtmlWithOptions(jsonUrl, {
-      timeoutMs: 30_000,
-      referer: `${base}/browse`,
-      retries: 1,
-    });
+    const jsonText = await fetchHtmlWithOptions(
+      jsonUrl,
+      getFlameFetchOptions(base, "/browse", 30_000, 2),
+    );
     if (!jsonText) {
       continue;
     }
@@ -426,8 +445,7 @@ async function fetchFlameBrowseSeriesFromNextDataJson(
 async function fetchFlameBrowseSeriesFromHomeBuildJson(): Promise<FlameBrowseSeriesJson[]> {
   for (const url of FLAME_HOME_URLS) {
     const homeHtml = await fetchHtmlWithOptions(url, {
-      timeoutMs: 30_000,
-      retries: 1,
+      ...getFlameFetchOptions(new URL(url).origin, "/browse", 30_000, 2),
     });
     if (!homeHtml) {
       continue;
@@ -483,9 +501,7 @@ async function fetchFlameBrowseHtml(): Promise<string> {
   }
   for (const url of attemptUrls) {
     const html = await fetchHtmlWithOptions(url, {
-      timeoutMs: 30_000,
-      referer: url,
-      retries: 1,
+      ...getFlameFetchOptions(new URL(url).origin, "/browse", 30_000, 2),
     });
     if (!html) {
       continue;
@@ -710,8 +726,7 @@ export function getHomeLatestFlameHighlights(): Promise<CatalogHighlight[]> {
     async () => {
       for (const homeUrl of FLAME_HOME_URLS) {
         const html = await fetchHtmlWithOptions(homeUrl, {
-          timeoutMs: 25_000,
-          retries: 1,
+          ...getFlameFetchOptions(new URL(homeUrl).origin, "/browse", 30_000, 2),
         });
         if (!html) {
           continue;

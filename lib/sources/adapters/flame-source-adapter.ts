@@ -1,4 +1,4 @@
-import { fetchHtml, fetchHtmlWithOptions } from "@/lib/fetch-utils";
+import { fetchHtmlWithOptions } from "@/lib/fetch-utils";
 import {
   type ParsedFlameSeriesSlug,
   parseFlameSeriesSlug,
@@ -18,6 +18,14 @@ import {
  * Base URL for Flame Comics (scanlation site).
  */
 const FLAME_BASE_URL = "https://flamecomics.xyz";
+/**
+ * Host variants used when one Flame domain is blocked or unstable in serverless regions.
+ */
+const FLAME_BASE_URLS = [
+  "https://flamecomics.xyz",
+  "https://www.flamecomics.xyz",
+  "https://flamecomics.com",
+] as const;
 
 /**
  * CDN base used for chapter page assets referenced in `__NEXT_DATA__` and `<img>` tags.
@@ -324,6 +332,35 @@ function logFlameError(payload: Record<string, unknown>): void {
 }
 
 /**
+ * Builds consistent browser-like fetch options for Flame host requests.
+ */
+function flameRequestOptions(baseUrl: string): Parameters<typeof fetchHtmlWithOptions>[1] {
+  return {
+    timeoutMs: 30_000,
+    retries: 2,
+    referer: `${baseUrl}/browse`,
+    origin: baseUrl,
+    extraHeaders: {
+      "sec-fetch-site": "same-origin",
+    },
+  };
+}
+
+/**
+ * Tries all known Flame host variants and returns the first HTML response.
+ */
+async function fetchFlameHtmlAcrossHosts(path: string): Promise<{ html: string; url: string } | null> {
+  for (const baseUrl of FLAME_BASE_URLS) {
+    const url = `${baseUrl}${path}`;
+    const html = await fetchHtmlWithOptions(url, flameRequestOptions(baseUrl));
+    if (html) {
+      return { html, url };
+    }
+  }
+  return null;
+}
+
+/**
  * Reads Open Graph image URL from a Flame HTML page (series overview or chapter).
  */
 function extractOgImageFromSeriesHtml(html: string): string | null {
@@ -351,14 +388,11 @@ export async function fetchFlameSeriesOverviewHomeExtras(
   if (!parsed) {
     return { latestChapterTitle: null, coverImageUrl: null };
   }
-  const url = `${FLAME_BASE_URL}/${parsed.contentKind}/${parsed.numericId}`;
-  const html = await fetchHtmlWithOptions(url, {
-    timeoutMs: 28_000,
-    referer: `${FLAME_BASE_URL}/browse`,
-  });
-  if (!html) {
+  const result = await fetchFlameHtmlAcrossHosts(`/${parsed.contentKind}/${parsed.numericId}`);
+  if (!result) {
     return { latestChapterTitle: null, coverImageUrl: null };
   }
+  const html = result.html;
   const chapters =
     parseFlameSeriesChaptersFromNextData(html, parsed) ??
     extractChapterSummaries(parsed, html);
@@ -404,11 +438,8 @@ export class FlameSourceAdapter implements SourceAdapter {
     }
 
     const url = `${FLAME_BASE_URL}/${parsed.contentKind}/${parsed.numericId}`;
-    const html = await fetchHtmlWithOptions(url, {
-      timeoutMs: 28_000,
-      referer: `${FLAME_BASE_URL}/browse`,
-    });
-    if (!html) {
+    const result = await fetchFlameHtmlAcrossHosts(`/${parsed.contentKind}/${parsed.numericId}`);
+    if (!result) {
       logFlameError({
         code: "network",
         message: "Failed to fetch Flame series page.",
@@ -416,6 +447,7 @@ export class FlameSourceAdapter implements SourceAdapter {
       });
       return [];
     }
+    const html = result.html;
 
     const chapters =
       parseFlameSeriesChaptersFromNextData(html, parsed) ??
@@ -461,12 +493,18 @@ export class FlameSourceAdapter implements SourceAdapter {
     }
 
     const token = chapterSlug.trim().toLowerCase();
-    const chapterUrl = `${FLAME_BASE_URL}/${parsed.contentKind}/${parsed.numericId}/${token}`;
-    const html = await fetchHtml(chapterUrl);
-    if (!html) {
-      logFlameError({ code: "network", message: "Empty chapter HTML.", chapterUrl });
+    const chapterPath = `/${parsed.contentKind}/${parsed.numericId}/${token}`;
+    const chapterResult = await fetchFlameHtmlAcrossHosts(chapterPath);
+    if (!chapterResult) {
+      logFlameError({
+        code: "network",
+        message: "Empty chapter HTML.",
+        chapterUrl: `${FLAME_BASE_URL}${chapterPath}`,
+      });
       return null;
     }
+    const html = chapterResult.html;
+    const chapterUrl = chapterResult.url;
 
     if (detectAuthGuard(html)) {
       logFlameError({ code: "auth-required", chapterUrl });

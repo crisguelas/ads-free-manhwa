@@ -5,6 +5,8 @@ export type FetchHtmlOptions = {
   timeoutMs?: number;
   referer?: string;
   retries?: number;
+  origin?: string;
+  extraHeaders?: Record<string, string>;
 };
 
 /**
@@ -24,7 +26,9 @@ export async function fetchHtmlWithOptions(
 ): Promise<string> {
   const timeoutMs = options?.timeoutMs ?? 12_000;
   const referer = options?.referer;
+  const origin = options?.origin;
   const retries = Math.max(0, options?.retries ?? 0);
+  const extraHeaders = options?.extraHeaders ?? {};
   const maxAttempts = retries + 1;
   let attempt = 0;
 
@@ -39,10 +43,27 @@ export async function fetchHtmlWithOptions(
         accept:
           "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
         "accept-language": "en-US,en;q=0.9",
+        "sec-ch-ua":
+          '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"Windows"',
+        "sec-fetch-dest": "document",
+        "sec-fetch-mode": "navigate",
+        "sec-fetch-site": "same-origin",
+        "sec-fetch-user": "?1",
+        pragma: "no-cache",
         "cache-control": "no-cache",
       };
       if (referer) {
         headers.referer = referer;
+      }
+      if (origin) {
+        headers.origin = origin;
+      }
+      for (const [key, value] of Object.entries(extraHeaders)) {
+        if (value) {
+          headers[key.toLowerCase()] = value;
+        }
       }
 
       const response = await fetch(url, {

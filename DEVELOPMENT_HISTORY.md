@@ -10,6 +10,31 @@ This file tracks implementation steps so future developers can understand what w
 
 ## Timeline
 
+### 2026-04-16 - Flame multi-host adapter fetch hardening (anti-block reliability)
+
+**Objective**
+- Reduce production fallback collapse for Flame (`curated-fallback`) by making series/chapter fetches and browse/home JSON calls more resilient to host-specific blocking in serverless runtime.
+
+**Changes made**
+- `lib/fetch-utils.ts`:
+  - Expanded `fetchHtmlWithOptions` to support `origin` and `extraHeaders`.
+  - Added browser-like request headers (`sec-ch-ua*`, `sec-fetch-*`, `pragma`) to better match real navigation requests.
+- `lib/live-source-browse.ts`:
+  - Added `getFlameFetchOptions()` helper and applied it to Flame browse/home and `_next/data` fetches.
+  - Increased Flame retries from 1 to 2 on critical browse/home JSON fetch paths.
+- `lib/sources/adapters/flame-source-adapter.ts`:
+  - Added host-variant fallback list (`flamecomics.xyz`, `www.flamecomics.xyz`, `flamecomics.com`) for adapter-level series and chapter fetches.
+  - Added `fetchFlameHtmlAcrossHosts()` + shared `flameRequestOptions()` and wired them into `listSeriesChapters`, `getChapterDetail`, and `fetchFlameSeriesOverviewHomeExtras`.
+
+**Verification**
+- `npm run lint`
+- `npm run build`
+
+**Next**
+- Re-check Vercel logs for `[flame-live]` and `[flame-adapter]` markers; confirm `browse-catalog` no longer lands on `curated-fallback` for warm production requests.
+
+---
+
 ### 2026-04-15 - Flame browse fallback hardening (Vercel resilience)
 
 **Objective**

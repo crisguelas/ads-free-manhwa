@@ -68,6 +68,28 @@ function logFlameTier(scope: "home-latest" | "browse-catalog", tier: string, met
 }
 
 /**
+ * Emits per-attempt Flame fetch diagnostics so runtime logs show host/endpoint/status before fallback tiers trigger.
+ */
+function flameAttemptLogger(scope: "home-latest" | "browse-catalog", stage: string) {
+  return (result: {
+    url: string;
+    attempt: number;
+    maxAttempts: number;
+    ok: boolean;
+    status: number | null;
+    errorName: string | null;
+  }) => {
+    if (result.ok) {
+      return;
+    }
+    const status = result.status != null ? `status=${result.status}` : `error=${result.errorName ?? "unknown"}`;
+    console.warn(
+      `[flame-live] scope=${scope} tier=${stage} ${status} attempt=${result.attempt}/${result.maxAttempts} url=${result.url}`,
+    );
+  };
+}
+
+/**
  * One series row scraped from a source’s public browse HTML (before merging with curated overrides).
  */
 export type LiveBrowseRow = {
@@ -416,7 +438,10 @@ async function fetchFlameBrowseSeriesFromNextDataJson(
     const jsonUrl = `${base}/_next/data/${buildId}/browse.json`;
     const jsonText = await fetchHtmlWithOptions(
       jsonUrl,
-      getFlameFetchOptions(base, "/browse", 30_000, 2),
+      {
+        ...getFlameFetchOptions(base, "/browse", 30_000, 2),
+        onAttempt: flameAttemptLogger("browse-catalog", "browse-next-data-json-fetch"),
+      },
     );
     if (!jsonText) {
       continue;
@@ -446,6 +471,7 @@ async function fetchFlameBrowseSeriesFromHomeBuildJson(): Promise<FlameBrowseSer
   for (const url of FLAME_HOME_URLS) {
     const homeHtml = await fetchHtmlWithOptions(url, {
       ...getFlameFetchOptions(new URL(url).origin, "/browse", 30_000, 2),
+      onAttempt: flameAttemptLogger("browse-catalog", "home-build-html-fetch"),
     });
     if (!homeHtml) {
       continue;
@@ -502,6 +528,7 @@ async function fetchFlameBrowseHtml(): Promise<string> {
   for (const url of attemptUrls) {
     const html = await fetchHtmlWithOptions(url, {
       ...getFlameFetchOptions(new URL(url).origin, "/browse", 30_000, 2),
+      onAttempt: flameAttemptLogger("browse-catalog", "browse-html-fetch"),
     });
     if (!html) {
       continue;
@@ -727,6 +754,7 @@ export function getHomeLatestFlameHighlights(): Promise<CatalogHighlight[]> {
       for (const homeUrl of FLAME_HOME_URLS) {
         const html = await fetchHtmlWithOptions(homeUrl, {
           ...getFlameFetchOptions(new URL(homeUrl).origin, "/browse", 30_000, 2),
+          onAttempt: flameAttemptLogger("home-latest", "home-json-fetch"),
         });
         if (!html) {
           continue;

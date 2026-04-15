@@ -10,6 +10,33 @@ This file tracks implementation steps so future developers can understand what w
 
 ## Timeline
 
+### 2026-04-16 - Flame per-host fetch attempt logging (production diagnostics)
+
+**Objective**
+- Make Vercel troubleshooting actionable by logging host-level and endpoint-level Flame fetch failures (status/error + attempt count) before fallback tiers are selected.
+
+**Changes made**
+- `lib/fetch-utils.ts`:
+  - Added optional `onAttempt` callback in `fetchHtmlWithOptions` to emit structured attempt metadata (`url`, `status`, `errorName`, `attempt/maxAttempts`).
+- `lib/live-source-browse.ts`:
+  - Added `flameAttemptLogger()` and wired it into Flame browse/home JSON fetches:
+    - browse HTML fetch
+    - browse Next-data JSON fetch
+    - home build HTML fetch
+    - home JSON fetch
+  - Logs now include stage, URL, HTTP status (when present), and retry attempt index.
+- `lib/sources/adapters/flame-source-adapter.ts`:
+  - Added `flameAdapterAttemptLogger()` and wired it into adapter host failover fetches so `/series/{id}` and chapter fetch failures include per-host diagnostics.
+
+**Verification**
+- `npm run lint`
+- `npm run build`
+
+**Next**
+- Pull fresh Vercel logs and identify the exact failing host/endpoint combination; then target a minimal functional fallback path based on observed status patterns.
+
+---
+
 ### 2026-04-16 - Flame multi-host adapter fetch hardening (anti-block reliability)
 
 **Objective**

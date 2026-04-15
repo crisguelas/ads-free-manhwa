@@ -7,6 +7,19 @@ export type FetchHtmlOptions = {
   retries?: number;
   origin?: string;
   extraHeaders?: Record<string, string>;
+  onAttempt?: (result: FetchHtmlAttemptResult) => void;
+};
+
+/**
+ * Structured metadata for each fetch attempt so callers can emit source-specific diagnostics.
+ */
+type FetchHtmlAttemptResult = {
+  url: string;
+  attempt: number;
+  maxAttempts: number;
+  ok: boolean;
+  status: number | null;
+  errorName: string | null;
 };
 
 /**
@@ -29,6 +42,7 @@ export async function fetchHtmlWithOptions(
   const origin = options?.origin;
   const retries = Math.max(0, options?.retries ?? 0);
   const extraHeaders = options?.extraHeaders ?? {};
+  const onAttempt = options?.onAttempt;
   const maxAttempts = retries + 1;
   let attempt = 0;
 
@@ -71,6 +85,14 @@ export async function fetchHtmlWithOptions(
         signal: controller.signal,
         cache: "no-store", // Ensure fresh data unless the caller uses unstable_cache
       });
+      onAttempt?.({
+        url,
+        attempt,
+        maxAttempts,
+        ok: response.ok,
+        status: response.status,
+        errorName: null,
+      });
 
       if (!response.ok) {
         if (attempt >= maxAttempts) {
@@ -81,6 +103,14 @@ export async function fetchHtmlWithOptions(
 
       return await response.text();
     } catch (error) {
+      onAttempt?.({
+        url,
+        attempt,
+        maxAttempts,
+        ok: false,
+        status: null,
+        errorName: error instanceof Error ? error.name : "UnknownError",
+      });
       if (attempt >= maxAttempts) {
         if (error instanceof Error && error.name === "AbortError") {
           console.warn(`[fetchHtml] Timeout fetching ${url}`);

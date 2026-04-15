@@ -332,6 +332,32 @@ function logFlameError(payload: Record<string, unknown>): void {
 }
 
 /**
+ * Builds a per-attempt logger for adapter host failover requests.
+ */
+function flameAdapterAttemptLogger(stage: string) {
+  return (result: {
+    url: string;
+    attempt: number;
+    maxAttempts: number;
+    ok: boolean;
+    status: number | null;
+    errorName: string | null;
+  }) => {
+    if (result.ok) {
+      return;
+    }
+    logFlameError({
+      code: "fetch-attempt-failed",
+      stage,
+      url: result.url,
+      status: result.status,
+      errorName: result.errorName,
+      attempt: `${result.attempt}/${result.maxAttempts}`,
+    });
+  };
+}
+
+/**
  * Builds consistent browser-like fetch options for Flame host requests.
  */
 function flameRequestOptions(baseUrl: string): Parameters<typeof fetchHtmlWithOptions>[1] {
@@ -352,7 +378,10 @@ function flameRequestOptions(baseUrl: string): Parameters<typeof fetchHtmlWithOp
 async function fetchFlameHtmlAcrossHosts(path: string): Promise<{ html: string; url: string } | null> {
   for (const baseUrl of FLAME_BASE_URLS) {
     const url = `${baseUrl}${path}`;
-    const html = await fetchHtmlWithOptions(url, flameRequestOptions(baseUrl));
+    const html = await fetchHtmlWithOptions(url, {
+      ...flameRequestOptions(baseUrl),
+      onAttempt: flameAdapterAttemptLogger("host-failover"),
+    });
     if (html) {
       return { html, url };
     }

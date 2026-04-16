@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { BROWSE_SOURCE_KEYS, BROWSE_SOURCE_LABELS } from "@/lib/source-browse-data";
+import { BROWSE_SOURCE_KEYS, BROWSE_SOURCE_LABELS } from "@/lib/browse-constants";
 
 /** Milliseconds before closing after pointer leaves (crossing the trigger–panel gap). */
 const HOVER_CLOSE_DELAY_MS = 140;

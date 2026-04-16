@@ -10,6 +10,32 @@ This file tracks implementation steps so future developers can understand what w
 
 ## Timeline
 
+### 2026-04-16 - Flame browse last-known-good DB fallback (SeriesCache)
+
+**Objective**
+- Prevent `/browse/flame-scans` from collapsing to curated-only rows when Flame returns sustained 403s by serving a persistent last-known-good catalog from the database.
+
+**Changes made**
+- `lib/live-source-browse.ts`:
+  - Added `SeriesCache`-backed helpers for Flame browse resilience:
+    - `persistFlameBrowseRowsToSeriesCache()`
+    - `loadFlameBrowseRowsFromSeriesCache()`
+  - Added cached Flame source-id resolver via Prisma (`getCachedFlameSourceId`).
+  - Updated `buildLiveBrowseCatalogForSource("flame-scans")` fallback chain:
+    - live cache/direct fetch retries
+    - **new:** `series-cache-fallback`
+    - curated fallback (only if DB fallback is also empty/unavailable)
+  - On successful live rows, upserts title/cover into `SeriesCache` to keep fallback fresh.
+
+**Verification**
+- `npm run lint`
+- `npm run build`
+
+**Next**
+- Trigger production traffic on `/browse/flame-scans` and confirm logs show `tier=series-cache-fallback` (instead of `curated-fallback`) during upstream 403 windows.
+
+---
+
 ### 2026-04-16 - Flame per-host fetch attempt logging (production diagnostics)
 
 **Objective**

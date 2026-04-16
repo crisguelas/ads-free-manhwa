@@ -1,6 +1,5 @@
 import type { CatalogHighlight } from "@/lib/featured-series";
 import type { BrowseSourceKey } from "@/lib/browse-constants";
-import { buildLiveBrowseCatalogForSource } from "@/lib/live-source-browse";
 
 export {
   BROWSE_SOURCE_KEYS,
@@ -15,5 +14,6 @@ export {
 export async function getBrowseCatalogForSource(
   sourceKey: BrowseSourceKey,
 ): Promise<CatalogHighlight[]> {
+  const { buildLiveBrowseCatalogForSource } = await import("@/lib/live-source-browse");
   return buildLiveBrowseCatalogForSource(sourceKey);
 }

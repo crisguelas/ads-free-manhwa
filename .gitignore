@@ -42,3 +42,6 @@ next-env.d.ts
 setup_git.ps1
 
 /lib/generated/prisma
+
+.vercel
+.env*.local

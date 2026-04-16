@@ -1,5 +1,11 @@
-import { stripAsuraHashSuffix } from "@/lib/live-source-browse";
 import { decodeBasicHtmlEntities } from "@/lib/html-entities";
+
+/**
+ * Normalizes Asura slugs by removing the trailing hash suffix segment used on some comic URLs.
+ */
+function stripAsuraHashSuffix(slug: string): string {
+  return slug.replace(/-[a-z0-9]{8,}$/i, "");
+}
 
 /**
  * Escapes a string for safe use inside a `RegExp` constructor when stripping redundant chapter prefixes.

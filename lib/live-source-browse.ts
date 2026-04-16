@@ -58,6 +58,8 @@ const HOME_LATEST_PER_SOURCE = 12;
 
 /** Revalidate home latest panels a little sooner than the hourly full browse merge. */
 const HOME_LATEST_REVALIDATE_SEC = 1800;
+/** Flame source key used for persistent browse fallback reads/writes in `SeriesCache`. */
+const FLAME_SOURCE_KEY = "flame-scans";
 
 /**
  * Emits one-line trace markers so production logs can reveal which Flame fallback tier served data.
@@ -65,6 +67,98 @@ const HOME_LATEST_REVALIDATE_SEC = 1800;
 function logFlameTier(scope: "home-latest" | "browse-catalog", tier: string, meta?: string): void {
   const suffix = meta ? ` ${meta}` : "";
   console.info(`[flame-live] scope=${scope} tier=${tier}${suffix}`);
+}
+
+/**
+ * Resolves the Flame source id from the database once per process.
+ */
+const getCachedFlameSourceId = unstable_cache(
+  async () => {
+    const { prisma } = await import("@/lib/prisma");
+    const source = await prisma.source.findUnique({
+      where: { key: FLAME_SOURCE_KEY },
+      select: { id: true },
+    });
+    return source?.id ?? null;
+  },
+  ["flame-source-id", "v1"],
+  { revalidate: 3600 },
+);
+
+/**
+ * Saves successful Flame browse rows as the last-known-good fallback in `SeriesCache`.
+ */
+async function persistFlameBrowseRowsToSeriesCache(rows: LiveBrowseRow[]): Promise<void> {
+  if (rows.length === 0) {
+    return;
+  }
+  try {
+    const { prisma } = await import("@/lib/prisma");
+    const sourceId = await getCachedFlameSourceId();
+    if (!sourceId) {
+      return;
+    }
+    await Promise.all(
+      rows.map((row) =>
+        prisma.seriesCache.upsert({
+          where: {
+            sourceId_seriesSlug: {
+              sourceId,
+              seriesSlug: row.seriesSlug,
+            },
+          },
+          create: {
+            sourceId,
+            seriesSlug: row.seriesSlug,
+            title: row.title,
+            coverImageUrl: row.coverImageUrl,
+            genres: [],
+            synopsis: null,
+          },
+          update: {
+            title: row.title,
+            coverImageUrl: row.coverImageUrl,
+            lastSyncedAt: new Date(),
+          },
+        }),
+      ),
+    );
+  } catch (error) {
+    console.warn("[flame-live] scope=browse-catalog tier=series-cache-persist-failed", error);
+  }
+}
+
+/**
+ * Loads last-known-good Flame browse rows from `SeriesCache` when live scraping is blocked.
+ */
+async function loadFlameBrowseRowsFromSeriesCache(): Promise<LiveBrowseRow[]> {
+  try {
+    const { prisma } = await import("@/lib/prisma");
+    const sourceId = await getCachedFlameSourceId();
+    if (!sourceId) {
+      return [];
+    }
+    const cachedRows = await prisma.seriesCache.findMany({
+      where: { sourceId },
+      select: {
+        seriesSlug: true,
+        title: true,
+        coverImageUrl: true,
+        lastSyncedAt: true,
+      },
+      orderBy: { lastSyncedAt: "desc" },
+      take: 500,
+    });
+    return cachedRows.map((row) => ({
+      seriesSlug: row.seriesSlug,
+      title: row.title,
+      coverImageUrl: row.coverImageUrl,
+      sourceKey: "flame-scans",
+    }));
+  } catch (error) {
+    console.warn("[flame-live] scope=browse-catalog tier=series-cache-read-failed", error);
+    return [];
+  }
 }
 
 /**
@@ -910,9 +1004,17 @@ export async function buildLiveBrowseCatalogForSource(
     logFlameTier("browse-catalog", "second-direct-fetch", `rows=${flameRows.length}`);
   }
   if (flameRows.length === 0) {
+    const dbFallbackRows = (await loadFlameBrowseRowsFromSeriesCache()).filter(
+      (row) => !isFlameWebNovelSeriesSlug(row.seriesSlug),
+    );
+    if (dbFallbackRows.length > 0) {
+      logFlameTier("browse-catalog", "series-cache-fallback", `rows=${dbFallbackRows.length}`);
+      return mergeFlameWithCurated(dbFallbackRows, CATALOG_HIGHLIGHTS);
+    }
     logFlameTier("browse-catalog", "curated-fallback");
     return CATALOG_HIGHLIGHTS.filter((h) => h.sourceKey === "flame-scans");
   }
+  await persistFlameBrowseRowsToSeriesCache(flameRows);
   logFlameTier("browse-catalog", "merge-live-curated", `rows=${flameRows.length}`);
   return mergeFlameWithCurated(flameRows, CATALOG_HIGHLIGHTS);
 }

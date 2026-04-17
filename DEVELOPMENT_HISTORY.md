@@ -10,6 +10,29 @@ This file tracks implementation steps so future developers can understand what w
 
 ## Timeline
 
+### 2026-04-17 - Database residue cleanup (auth/bookmark/flame)
+
+**Objective**
+- Remove any remaining database data tied to removed login, bookmark, and Flame integrations without impacting active Asura-only behavior.
+
+**Changes made**
+- Verified migration state with `npx prisma migrate status` (schema up to date).
+- Executed targeted SQL cleanup against production-linked database:
+  - deleted legacy source rows where `Source.key IN ('flame-scans', 'reaper-scans')`
+  - relied on existing foreign-key cascade behavior to remove dependent `Follow`, `SeriesCache`, and `ChapterCache` rows tied to those source IDs.
+- Confirmed auth/bookmark schema residue is already removed by applied migrations:
+  - auth tables (`User`, `PasswordResetToken`) are removed by `20260417160000_remove_auth_system`
+  - bookmark/progress tables (`Bookmark`, `ReadingHistory`) are removed by `20260417170000_remove_bookmark_and_reading_history`
+
+**Verification**
+- `npx prisma migrate status`
+- `npx prisma db execute --stdin` (cleanup SQL executed successfully)
+
+**Next**
+- Keep future seed and data operations scoped to supported sources (`asura-scans`) to prevent legacy source residue from reappearing.
+
+---
+
 ### 2026-04-17 - Remove bookmarks and switch continue-reading to browser cache
 
 **Objective**

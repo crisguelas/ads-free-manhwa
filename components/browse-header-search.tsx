@@ -13,6 +13,28 @@ type SearchResult = {
 };
 
 /**
+ * Returns true when a pointer event originated inside `root`, including targets inside
+ * user-agent shadow trees (e.g. WebKit/Chromium clear button on `type="search"` inputs),
+ * where `root.contains(event.target)` is often false even though the click is still on the field.
+ */
+function isPointerEventInsideContainer(event: PointerEvent, root: HTMLElement | null): boolean {
+  if (!root) {
+    return false;
+  }
+  const path =
+    typeof event.composedPath === "function" ? event.composedPath() : [event.target];
+  for (const candidate of path) {
+    if (candidate === root) {
+      return true;
+    }
+    if (candidate instanceof Node && root.contains(candidate)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Header search field: real-time dropdown of series results as the user types.
  */
 export function BrowseHeaderSearch() {
@@ -22,15 +44,15 @@ export function BrowseHeaderSearch() {
   const [isLoading, setIsLoading] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Close dropdown when clicking outside
+  // Close dropdown when clicking outside (use composedPath so UA shadow controls still count as “inside”).
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+    function handlePointerDownOutside(event: PointerEvent) {
+      if (!isPointerEventInsideContainer(event, containerRef.current)) {
         setIsOpen(false);
       }
     }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    document.addEventListener("pointerdown", handlePointerDownOutside);
+    return () => document.removeEventListener("pointerdown", handlePointerDownOutside);
   }, []);
 
   // Fetch results as query changes
@@ -39,24 +61,38 @@ export function BrowseHeaderSearch() {
     if (q.length < 2) {
       setResults([]);
       setIsOpen(false);
+      setIsLoading(false);
       return;
     }
 
+    const controller = new AbortController();
     const timer = setTimeout(async () => {
       setIsLoading(true);
       try {
-        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
-        const data = await res.json();
-        setResults(data);
+        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`, {
+          signal: controller.signal,
+        });
+        const data: unknown = await res.json();
+        if (!Array.isArray(data)) {
+          setResults([]);
+          return;
+        }
+        setResults(data as SearchResult[]);
         setIsOpen(true);
       } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") {
+          return;
+        }
         console.error("Search fetch error:", err);
       } finally {
         setIsLoading(false);
       }
     }, 300); // 300ms debounce
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
   }, [query]);
 
   return (

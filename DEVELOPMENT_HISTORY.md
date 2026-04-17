@@ -10,6 +10,23 @@ This file tracks implementation steps so future developers can understand what w
 
 ## Timeline
 
+### 2026-04-17 - Header search dropdown: fix results flashing closed
+
+**Objective**
+- Stop the search dropdown from closing immediately after results appear (especially when interacting with the native search field UI).
+
+**Changes made**
+- `components/browse-header-search.tsx`: close-on-outside-click now uses `pointerdown` + `event.composedPath()` so targets inside the browser’s `type="search"` shadow UI still count as inside the control; added fetch `AbortController` debounce cleanup and `Array.isArray` guarding for API responses.
+
+**Verification**
+- `npm run lint`
+- `npm run build`
+
+**Next**
+- None unless a browser still reports odd `composedPath` behavior on a specific platform.
+
+---
+
 ### 2026-04-17 - Database residue cleanup (auth/bookmark/flame)
 
 **Objective**

@@ -141,7 +141,7 @@ export function BrowseHeaderSearch() {
       </label>
 
       {isOpen && query.trim().length >= 2 && (
-        <div className="absolute left-0 right-0 top-full z-[60] mt-2 overflow-hidden rounded-2xl border border-zinc-200/90 bg-white/90 shadow-xl shadow-zinc-900/10 backdrop-blur-xl animate-in fade-in slide-in-from-top-2 duration-200">
+        <div className="absolute left-0 right-0 top-full z-[60] mt-2 overflow-hidden rounded-2xl border border-zinc-200/90 bg-white shadow-xl shadow-zinc-900/10 animate-in fade-in slide-in-from-top-2 duration-200">
           <div className="max-h-[min(380px,70vh)] overflow-y-auto overscroll-contain px-2 py-2">
             {isLoading && results.length === 0 ? (
               <div className="flex items-center justify-center py-8">
@@ -153,8 +153,8 @@ export function BrowseHeaderSearch() {
               </div>
             ) : results.length > 0 ? (
               <ul className="grid gap-1">
-                {results.map((r, i) => (
-                  <li key={`${r.sourceName}-${r.slug}-${i}`}>
+                {results.map((r) => (
+                  <li key={`${r.sourceKey}-${r.slug}`}>
                     <Link
                       href={`/manhwa/${encodeURIComponent(r.slug)}`}
                       onClick={() => setIsOpen(false)}

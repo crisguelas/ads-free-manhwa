@@ -10,6 +10,24 @@ This file tracks implementation steps so future developers can understand what w
 
 ## Timeline
 
+### 2026-04-17 - Search: dedupe Asura hashed slugs + solid dropdown panel
+
+**Objective**
+- Remove duplicate tiles (e.g. two “Solo Leveling”) when static catalog slug and live browse slug differ only by Asura’s trailing hash segment; reduce see-through dropdown over page text.
+
+**Changes made**
+- `app/api/search/route.ts`: merge hits with `stripAsuraHashSuffix` keys for `asura-scans`; when collapsing, prefer rows with a cover URL then the longer live slug.
+- `components/browse-header-search.tsx`: opaque dropdown surface (`bg-white`); React list keys use `sourceKey` + `slug`.
+
+**Verification**
+- `npm run lint`
+- `npm run build`
+
+**Next**
+- None unless more sources need slug-normalization rules.
+
+---
+
 ### 2026-04-17 - Search API: include live Asura browse catalog
 
 **Objective**

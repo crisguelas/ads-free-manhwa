@@ -1,9 +1,56 @@
 import { NextResponse } from "next/server";
 import { isBrowseSourceKey } from "@/lib/browse-constants";
-import { buildLiveBrowseCatalogForSource } from "@/lib/live-source-browse";
+import { buildLiveBrowseCatalogForSource, stripAsuraHashSuffix } from "@/lib/live-source-browse";
 import { prisma } from "@/lib/prisma";
 import { CATALOG_HIGHLIGHTS } from "@/lib/featured-series";
 import { SUPPORTED_SOURCE_KEYS } from "@/lib/supported-sources";
+
+/**
+ * One row returned to the header search client.
+ */
+interface SearchResult {
+  title: string;
+  slug: string;
+  coverImageUrl: string | null;
+  sourceName: string;
+  sourceKey: string;
+}
+
+/**
+ * Merge key so static `solo-leveling` and live `solo-leveling-75e30c62` count as one Asura hit.
+ */
+function searchResultMergeKey(sourceKey: string, seriesSlug: string): string {
+  if (sourceKey === "asura-scans") {
+    return `${sourceKey}:${stripAsuraHashSuffix(seriesSlug)}`;
+  }
+  return `${sourceKey}:${seriesSlug}`;
+}
+
+/**
+ * When two rows share a merge key, keep the richer row: real cover beats placeholder, then prefer the longer live slug for routing.
+ */
+function shouldPreferSearchResult(candidate: SearchResult, incumbent: SearchResult): boolean {
+  const cCover = Boolean(candidate.coverImageUrl);
+  const iCover = Boolean(incumbent.coverImageUrl);
+  if (cCover && !iCover) {
+    return true;
+  }
+  if (!cCover && iCover) {
+    return false;
+  }
+  return candidate.slug.length > incumbent.slug.length;
+}
+
+/**
+ * Inserts or replaces a merged search hit using Asura hash-aware deduplication.
+ */
+function upsertMergedSearchResult(merged: Map<string, SearchResult>, row: SearchResult): void {
+  const key = searchResultMergeKey(row.sourceKey, row.slug);
+  const incumbent = merged.get(key);
+  if (!incumbent || shouldPreferSearchResult(row, incumbent)) {
+    merged.set(key, row);
+  }
+}
 
 /**
  * Returns merged DB cache, static highlights, and live browse catalog matches for the header search (title or slug substring).
@@ -43,21 +90,11 @@ export async function GET(request: Request) {
         h.seriesSlug.toLowerCase().includes(query),
     ).slice(0, 5);
 
-    // 3. Merge and Deduplicate
-    interface SearchResult {
-      title: string;
-      slug: string;
-      coverImageUrl: string | null;
-      sourceName: string;
-      sourceKey: string;
-    }
-
     const merged = new Map<string, SearchResult>();
 
     // Add DB hits (cover URLs from SeriesCache are already populated by browse/detail scrapes)
     for (const res of dbResults) {
-      const key = `${res.source.key}:${res.seriesSlug}`;
-      merged.set(key, {
+      upsertMergedSearchResult(merged, {
         title: res.title,
         slug: res.seriesSlug,
         coverImageUrl: res.coverImageUrl,
@@ -66,21 +103,17 @@ export async function GET(request: Request) {
       });
     }
 
-    // Add static hits if not already present
     for (const h of staticResults) {
-      const key = `${h.sourceKey}:${h.seriesSlug}`;
-      if (!merged.has(key)) {
-        merged.set(key, {
-          title: h.title,
-          slug: h.seriesSlug,
-          coverImageUrl: h.coverImageUrl,
-          sourceName: h.sourceName,
-          sourceKey: h.sourceKey,
-        });
-      }
+      upsertMergedSearchResult(merged, {
+        title: h.title,
+        slug: h.seriesSlug,
+        coverImageUrl: h.coverImageUrl,
+        sourceName: h.sourceName,
+        sourceKey: h.sourceKey,
+      });
     }
 
-    // 4. Live browse catalog (same `unstable_cache` as `/browse` and home “latest”) so series visible there are searchable even when `SeriesCache` is empty.
+    // Live browse catalog (same `unstable_cache` as `/browse` and home “latest”) so series visible there are searchable even when `SeriesCache` is empty.
     for (const sourceKey of SUPPORTED_SOURCE_KEYS) {
       if (!isBrowseSourceKey(sourceKey)) {
         continue;
@@ -92,16 +125,13 @@ export async function GET(request: Request) {
         if (!titleMatch && !slugMatch) {
           continue;
         }
-        const key = `${h.sourceKey}:${h.seriesSlug}`;
-        if (!merged.has(key)) {
-          merged.set(key, {
-            title: h.title,
-            slug: h.seriesSlug,
-            coverImageUrl: h.coverImageUrl,
-            sourceName: h.sourceName,
-            sourceKey: h.sourceKey,
-          });
-        }
+        upsertMergedSearchResult(merged, {
+          title: h.title,
+          slug: h.seriesSlug,
+          coverImageUrl: h.coverImageUrl,
+          sourceName: h.sourceName,
+          sourceKey: h.sourceKey,
+        });
       }
     }
 

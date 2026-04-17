@@ -1,7 +1,6 @@
 import type { CatalogHighlight } from "@/lib/featured-series";
 import {
   getHomeLatestAsuraHighlights,
-  getHomeLatestFlameHighlights,
 } from "@/lib/live-source-browse";
 import { prisma } from "@/lib/prisma";
 
@@ -14,13 +13,6 @@ const OFFLINE_SOURCES: HomePageData["sources"] = [
     key: "asura-scans",
     name: "Asura Scans",
     baseUrl: "https://asuracomic.net",
-    isEnabled: true,
-  },
-  {
-    id: "offline-flame-scans",
-    key: "flame-scans",
-    name: "Flame Comics",
-    baseUrl: "https://flamecomics.xyz/",
     isEnabled: true,
   },
 ];
@@ -57,8 +49,6 @@ export type HomePageData = {
   recentReads: ContinueReadingCard[];
   /** Live Asura browse (first page order), cover-enriched when possible. */
   latestAsura: CatalogHighlight[];
-  /** Live Flame browse ordered by `last_edit`, cover-enriched when possible. */
-  latestFlame: CatalogHighlight[];
   currentUserEmail: string | null;
 };
 
@@ -68,10 +58,7 @@ export type HomePageData = {
 export async function getHomePageData(): Promise<HomePageData> {
   // Cover URLs are already embedded at browse-parse time and cached per-slug (daily TTL);
   // the separate enrichCatalogHighlightCovers pass was removed to avoid per-request outbound fetches.
-  const [latestAsura, latestFlame] = await Promise.all([
-    getHomeLatestAsuraHighlights(),
-    getHomeLatestFlameHighlights(),
-  ]);
+  const latestAsura = await getHomeLatestAsuraHighlights();
 
   try {
     const sources = await prisma.source.findMany({
@@ -90,7 +77,6 @@ export async function getHomePageData(): Promise<HomePageData> {
       dbOk: true,
       recentReads: [], // Moved to client-side API
       latestAsura,
-      latestFlame,
       currentUserEmail: null, // Moved to client-side API
     };
   } catch (err) {
@@ -101,7 +87,6 @@ export async function getHomePageData(): Promise<HomePageData> {
       dbOk: false,
       recentReads: [],
       latestAsura,
-      latestFlame,
       currentUserEmail: null,
     };
   }

@@ -1,204 +1,33 @@
 import { unstable_cache } from "next/cache";
 import { extractAsuraComicFormatFromSeriesHtml } from "@/lib/asura-comic-format";
+import type { BrowseSourceKey } from "@/lib/browse-constants";
 import type { CatalogHighlight } from "@/lib/featured-series";
 import { CATALOG_HIGHLIGHTS } from "@/lib/featured-series";
-import type { BrowseSourceKey } from "@/lib/browse-constants";
-import { isFlameWebNovelSeriesSlug } from "@/lib/flame-series-slug";
+import { fetchHtml } from "@/lib/fetch-utils";
 import { decodeBasicHtmlEntities } from "@/lib/html-entities";
 import { isAllowedScanlationFormatLabel } from "@/lib/scanlation-format-filter";
 import { getSourceAdapter } from "@/lib/sources/registry";
 
-import { fetchHtml, fetchHtmlWithOptions } from "@/lib/fetch-utils";
-import { fetchFlameSeriesOverviewHomeExtras } from "@/lib/sources/adapters/flame-source-adapter";
 const ASURA_BASE_URL = "https://asurascans.com";
-const FLAME_BROWSE_URLS = [
-  "https://flamecomics.xyz/browse",
-  "https://www.flamecomics.xyz/browse",
-  "https://flamecomics.com/browse",
-] as const;
-const FLAME_HOME_URLS = [
-  "https://flamecomics.xyz/",
-  "https://www.flamecomics.xyz/",
-  "https://flamecomics.com/",
-] as const;
-
-/**
- * Builds browser-like fetch options for Flame hosts so serverless requests look closer to a real navigation.
- */
-function getFlameFetchOptions(
-  hostOrigin: string,
-  refererPath: string,
-  timeoutMs: number,
-  retries: number,
-) {
-  return {
-    timeoutMs,
-    retries,
-    referer: `${hostOrigin}${refererPath}`,
-    origin: hostOrigin,
-    extraHeaders: {
-      "sec-fetch-site": "same-origin",
-    },
-  };
-}
-/**
- * Safety cap for Asura `/browse?page=` walks. The site paginates beyond the few page links visible on page 1,
- * so we keep requesting until a page returns zero cards (see `fetchAllAsuraBrowseRows`).
- */
 const ASURA_BROWSE_MAX_PAGES = 120;
-
-/** Parallel cap when resolving Asura `/comics/{slug}` format pills (one fetch per catalog title per cache rebuild). */
 const ASURA_FORMAT_FETCH_CONCURRENCY = 12;
-
-/**
- * How many series appear in each home “latest updates” column (Asura vs Flame).
- * Cached separately from the full browse scrape so the dashboard can revalidate a bit more often.
- */
 const HOME_LATEST_PER_SOURCE = 12;
-
-/** Revalidate home latest panels a little sooner than the hourly full browse merge. */
 const HOME_LATEST_REVALIDATE_SEC = 1800;
-/** Flame source key used for persistent browse fallback reads/writes in `SeriesCache`. */
-const FLAME_SOURCE_KEY = "flame-scans";
 
 /**
- * Emits one-line trace markers so production logs can reveal which Flame fallback tier served data.
- */
-function logFlameTier(scope: "home-latest" | "browse-catalog", tier: string, meta?: string): void {
-  const suffix = meta ? ` ${meta}` : "";
-  console.info(`[flame-live] scope=${scope} tier=${tier}${suffix}`);
-}
-
-/**
- * Resolves the Flame source id from the database once per process.
- */
-const getCachedFlameSourceId = unstable_cache(
-  async () => {
-    const { prisma } = await import("@/lib/prisma");
-    const source = await prisma.source.findUnique({
-      where: { key: FLAME_SOURCE_KEY },
-      select: { id: true },
-    });
-    return source?.id ?? null;
-  },
-  ["flame-source-id", "v1"],
-  { revalidate: 3600 },
-);
-
-/**
- * Saves successful Flame browse rows as the last-known-good fallback in `SeriesCache`.
- */
-async function persistFlameBrowseRowsToSeriesCache(rows: LiveBrowseRow[]): Promise<void> {
-  if (rows.length === 0) {
-    return;
-  }
-  try {
-    const { prisma } = await import("@/lib/prisma");
-    const sourceId = await getCachedFlameSourceId();
-    if (!sourceId) {
-      return;
-    }
-    await Promise.all(
-      rows.map((row) =>
-        prisma.seriesCache.upsert({
-          where: {
-            sourceId_seriesSlug: {
-              sourceId,
-              seriesSlug: row.seriesSlug,
-            },
-          },
-          create: {
-            sourceId,
-            seriesSlug: row.seriesSlug,
-            title: row.title,
-            coverImageUrl: row.coverImageUrl,
-            genres: [],
-            synopsis: null,
-          },
-          update: {
-            title: row.title,
-            coverImageUrl: row.coverImageUrl,
-            lastSyncedAt: new Date(),
-          },
-        }),
-      ),
-    );
-  } catch (error) {
-    console.warn("[flame-live] scope=browse-catalog tier=series-cache-persist-failed", error);
-  }
-}
-
-/**
- * Loads last-known-good Flame browse rows from `SeriesCache` when live scraping is blocked.
- */
-async function loadFlameBrowseRowsFromSeriesCache(): Promise<LiveBrowseRow[]> {
-  try {
-    const { prisma } = await import("@/lib/prisma");
-    const sourceId = await getCachedFlameSourceId();
-    if (!sourceId) {
-      return [];
-    }
-    const cachedRows = await prisma.seriesCache.findMany({
-      where: { sourceId },
-      select: {
-        seriesSlug: true,
-        title: true,
-        coverImageUrl: true,
-        lastSyncedAt: true,
-      },
-      orderBy: { lastSyncedAt: "desc" },
-      take: 500,
-    });
-    return cachedRows.map((row) => ({
-      seriesSlug: row.seriesSlug,
-      title: row.title,
-      coverImageUrl: row.coverImageUrl,
-      sourceKey: "flame-scans",
-    }));
-  } catch (error) {
-    console.warn("[flame-live] scope=browse-catalog tier=series-cache-read-failed", error);
-    return [];
-  }
-}
-
-/**
- * Emits per-attempt Flame fetch diagnostics so runtime logs show host/endpoint/status before fallback tiers trigger.
- */
-function flameAttemptLogger(scope: "home-latest" | "browse-catalog", stage: string) {
-  return (result: {
-    url: string;
-    attempt: number;
-    maxAttempts: number;
-    ok: boolean;
-    status: number | null;
-    errorName: string | null;
-  }) => {
-    if (result.ok) {
-      return;
-    }
-    const status = result.status != null ? `status=${result.status}` : `error=${result.errorName ?? "unknown"}`;
-    console.warn(
-      `[flame-live] scope=${scope} tier=${stage} ${status} attempt=${result.attempt}/${result.maxAttempts} url=${result.url}`,
-    );
-  };
-}
-
-/**
- * One series row scraped from a source’s public browse HTML (before merging with curated overrides).
+ * One series row scraped from Asura's public browse HTML.
  */
 export type LiveBrowseRow = {
   seriesSlug: string;
   title: string;
   coverImageUrl: string | null;
   sourceKey: BrowseSourceKey;
-  /** Latest chapter label parsed from the browse card (if available); avoids per-series adapter calls. */
   latestChapterLabel?: string;
-  /** Optional format/type label parsed from card payload (used to avoid extra per-row requests on home latest). */
   formatLabel?: string;
 };
 
 /**
- * Strips Asura’s trailing hash segment so curated slugs match live slugs.
+ * Strips Asura's trailing hash segment so curated slugs match live slugs.
  */
 export function stripAsuraHashSuffix(slug: string): string {
   return slug.replace(/-[a-z0-9]{8,}$/i, "");
@@ -206,8 +35,6 @@ export function stripAsuraHashSuffix(slug: string): string {
 
 /**
  * Reads the highest page number linked from an Asura browse HTML payload.
- * The visible nav is often a short window (e.g. pages 1–5), so this must not be used as the total page count;
- * `fetchAllAsuraBrowseRows` walks pages until empty instead.
  */
 export function maxAsuraBrowsePageFromHtml(html: string): number {
   let max = 1;
@@ -221,7 +48,7 @@ export function maxAsuraBrowsePageFromHtml(html: string): number {
 }
 
 /**
- * Parses series cards from one Asura `/browse` HTML page (cover + title from card markup).
+ * Parses series cards from one Asura `/browse` HTML page.
  */
 export function parseAsuraBrowseCardsHtml(html: string): LiveBrowseRow[] {
   const chunks = html.split("series-card group");
@@ -233,12 +60,8 @@ export function parseAsuraBrowseCardsHtml(html: string): LiveBrowseRow[] {
       continue;
     }
     const slug = hrefMatch[2];
-    const orderedImg = chunk.match(
-      /<img[^>]+src="(https?:\/\/[^"]+)"[^>]*alt="([^"]*)"/i,
-    );
-    const reversedImg = chunk.match(
-      /<img[^>]+alt="([^"]*)"[^>]+src="(https?:\/\/[^"]+)"/i,
-    );
+    const orderedImg = chunk.match(/<img[^>]+src="(https?:\/\/[^"]+)"[^>]*alt="([^"]*)"/i);
+    const reversedImg = chunk.match(/<img[^>]+alt="([^"]*)"[^>]+src="(https?:\/\/[^"]+)"/i);
     let cover: string | null = null;
     let title = slug;
     if (orderedImg) {
@@ -248,7 +71,6 @@ export function parseAsuraBrowseCardsHtml(html: string): LiveBrowseRow[] {
       cover = reversedImg[2];
       title = decodeBasicHtmlEntities(reversedImg[1] || slug);
     }
-    // Extract latest chapter label from the card markup (e.g. "Chapter 123") without making per-series adapter calls.
     const chapterMatch = chunk.match(/Chapter\s+[\d.]+/i);
     const cardFormatLabel = parseAsuraFormatLabelFromCardChunk(chunk);
     rows.push({
@@ -265,7 +87,6 @@ export function parseAsuraBrowseCardsHtml(html: string): LiveBrowseRow[] {
 
 /**
  * Reads a coarse format/type label from one Asura browse card when present.
- * This avoids one `/comics/{slug}` fetch per tile for the home latest strip.
  */
 function parseAsuraFormatLabelFromCardChunk(chunk: string): string | null {
   const candidates = ["manhwa", "manga", "manhua", "webtoon", "comic", "novel"];
@@ -279,8 +100,7 @@ function parseAsuraFormatLabelFromCardChunk(chunk: string): string | null {
 }
 
 /**
- * Keeps Asura browse rows whose `/comics/{slug}` page advertises manhwa, manga, manhua, or webtoon.
- * Drops other labels (comic, novel, …). If a fetch fails or no label is found, the row is kept so transient HTML changes do not empty the catalog.
+ * Keeps Asura browse rows with supported format labels.
  */
 async function filterAsuraLiveBrowseRowsToAllowedFormats(
   rows: LiveBrowseRow[],
@@ -290,9 +110,7 @@ async function filterAsuraLiveBrowseRowsToAllowedFormats(
     const chunk = rows.slice(i, i + ASURA_FORMAT_FETCH_CONCURRENCY);
     const batch = await Promise.all(
       chunk.map(async (row) => {
-        const html = await fetchHtml(
-          `${ASURA_BASE_URL}/comics/${row.seriesSlug}`,
-        );
+        const html = await fetchHtml(`${ASURA_BASE_URL}/comics/${row.seriesSlug}`);
         if (!html) {
           return row;
         }
@@ -314,8 +132,6 @@ async function filterAsuraLiveBrowseRowsToAllowedFormats(
 
 /**
  * Loads every Asura browse page and dedupes by full comic slug.
- * Fetches `/browse`, then `/browse?page=2`, … until a page parses zero series cards or the safety cap is hit.
- * (The first-page HTML only links to a small window of next pages, so we cannot infer the last page from nav links.)
  */
 async function fetchAllAsuraBrowseRows(): Promise<LiveBrowseRow[]> {
   const bySlug = new Map<string, LiveBrowseRow>();
@@ -328,15 +144,11 @@ async function fetchAllAsuraBrowseRows(): Promise<LiveBrowseRow[]> {
     for (let i = 0; i < BATCH_SIZE; i++) {
       const current = page + i;
       if (current > ASURA_BROWSE_MAX_PAGES) break;
-      const url =
-        current === 1
-          ? `${ASURA_BASE_URL}/browse`
-          : `${ASURA_BASE_URL}/browse?page=${current}`;
+      const url = current === 1 ? `${ASURA_BASE_URL}/browse` : `${ASURA_BASE_URL}/browse?page=${current}`;
       promises.push(fetchHtml(url));
     }
 
     const results = await Promise.all(promises);
-
     for (const html of results) {
       if (!html) {
         keepGoing = false;
@@ -347,17 +159,13 @@ async function fetchAllAsuraBrowseRows(): Promise<LiveBrowseRow[]> {
         keepGoing = false;
         break;
       }
-
       let newlyAdded = 0;
       for (const row of rows) {
         if (!bySlug.has(row.seriesSlug)) {
           bySlug.set(row.seriesSlug, row);
-          newlyAdded++;
+          newlyAdded += 1;
         }
       }
-
-      // Early exit: if we just parsed a full page but all series were already seen,
-      // the site is likely returning duplicate fallback pages beyond its true last page.
       if (newlyAdded === 0 && rows.length > 0) {
         keepGoing = false;
         break;
@@ -369,375 +177,33 @@ async function fetchAllAsuraBrowseRows(): Promise<LiveBrowseRow[]> {
   return filterAsuraLiveBrowseRowsToAllowedFormats([...bySlug.values()]);
 }
 
-type FlameBrowseSeriesJson = {
-  /** Manhwa / comic row (numeric id for `/series/{id}`). */
-  series_id?: number;
-  /** Web-novel row when `series_id` is absent (`/novel/{id}`). */
-  novel_id?: number;
-  /** Flame “Type” from browse JSON (Manhwa, Manga, Manhua, Comic, Web Novel, …). */
-  type?: string;
-  title: string;
-  cover?: string;
-  last_edit?: number;
-  /** Embedded chapters (on home page JSON) for immediate label resolution. */
-  chapters?: Array<{
-    chapter: string;
-    token: string;
-    title?: string;
-  }>;
-};
-
 /**
- * Maps parsed Flame browse JSON entries into app rows.
+ * Converts a live scrape row into the shared catalog highlight shape.
  */
-function mapFlameBrowseSeriesToRows(
-  series: FlameBrowseSeriesJson[],
-): LiveBrowseRow[] {
-  return series.flatMap((s) => {
-    const row = flameJsonSeriesToRow(s);
-    return row ? [row] : [];
-  });
-}
-
-/**
- * Parses Flame browse `__NEXT_DATA__` series array (SSR includes full list).
- */
-export function parseFlameBrowseSeriesHtml(html: string): LiveBrowseRow[] {
-  const match = html.match(
-    /<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/,
-  );
-  if (!match?.[1]) {
-    return [];
-  }
-  let data: { props?: { pageProps?: { series?: FlameBrowseSeriesJson[] } } };
-  try {
-    data = JSON.parse(match[1]) as {
-      props?: { pageProps?: { series?: FlameBrowseSeriesJson[] } };
-    };
-  } catch {
-    return [];
-  }
-  const series = data.props?.pageProps?.series;
-  if (!Array.isArray(series)) {
-    return [];
-  }
-  return mapFlameBrowseSeriesToRows(series);
-}
-
-/**
- * Maps one Flame browse JSON entry to a live row (cover URL includes cache-busting when `last_edit` exists).
- * Drops web-novel rows and non–manhwa/manga/manhua/webtoon `type` values so the catalog matches comic-strip content only.
- */
-function flameJsonSeriesToRow(s: FlameBrowseSeriesJson): LiveBrowseRow | null {
-  const hasSeries =
-    s.series_id != null && Number.isFinite(Number(s.series_id));
-  const hasNovel =
-    s.novel_id != null && Number.isFinite(Number(s.novel_id));
-
-  if (hasNovel) {
-    return null;
-  }
-
-  let seriesSlug: string;
-  /** CDN path under `uploads/images/` (manhwa uses `series/`, novels use `novels/`). */
-  let imageFolder: string;
-
-  if (hasSeries) {
-    if (
-      s.type != null &&
-      s.type.trim().length > 0 &&
-      !isAllowedScanlationFormatLabel(s.type)
-    ) {
-      return null;
-    }
-    seriesSlug = String(s.series_id);
-    imageFolder = `series/${seriesSlug}`;
-  } else {
-    return null;
-  }
-
-  const file =
-    typeof s.cover === "string" && s.cover.length > 0 ? s.cover : "thumbnail.png";
-  const query = s.last_edit != null ? `?${s.last_edit}` : "";
-  const row: LiveBrowseRow = {
-    seriesSlug,
-    title: decodeBasicHtmlEntities(s.title),
-    coverImageUrl: `https://cdn.flamecomics.xyz/uploads/images/${imageFolder}/${file}${query}`,
-    sourceKey: "flame-scans",
+function liveRowToHighlight(row: LiveBrowseRow): CatalogHighlight {
+  return {
+    id: `live-${row.sourceKey}-${row.seriesSlug}`,
+    seriesSlug: row.seriesSlug,
+    title: row.title,
+    coverImageUrl: row.coverImageUrl,
+    sourceName: "Asura Scans",
+    sourceKey: row.sourceKey,
+    genres: [],
+    latestChapter: row.latestChapterLabel ? { title: row.latestChapterLabel } : undefined,
   };
-  if (s.chapters?.[0]?.chapter) {
-    row.latestChapterLabel = `Chapter ${s.chapters[0].chapter}`;
-  }
-  return row;
 }
 
 /**
- * Parses Flame browse HTML and orders series by `last_edit` descending so the home page reflects recent site activity.
+ * Curated fallback when Asura scrape is unreachable.
  */
-export function parseFlameBrowseSeriesByRecency(html: string): LiveBrowseRow[] {
-  const match = html.match(
-    /<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/,
-  );
-  if (!match?.[1]) {
-    return [];
-  }
-  let data: { props?: { pageProps?: { series?: FlameBrowseSeriesJson[] } } };
-  try {
-    data = JSON.parse(match[1]) as {
-      props?: { pageProps?: { series?: FlameBrowseSeriesJson[] } };
-    };
-  } catch {
-    return [];
-  }
-  const series = data.props?.pageProps?.series;
-  if (!Array.isArray(series)) {
-    return [];
-  }
-  const sorted = [...series].sort(
-    (a, b) => (b.last_edit ?? 0) - (a.last_edit ?? 0),
-  );
-  const chapterBySeriesSlug = parseFlameLatestChapterLabelsBySeriesSlug(html);
-  return sorted.flatMap((s) => {
-    const row = flameJsonSeriesToRow(s);
-    if (row) {
-      row.latestChapterLabel = chapterBySeriesSlug.get(row.seriesSlug);
-    }
-    return row ? [row] : [];
-  });
+function fallbackAsuraLatestHighlights(): CatalogHighlight[] {
+  return CATALOG_HIGHLIGHTS.filter((h) => h.sourceKey === "asura-scans").slice(0, HOME_LATEST_PER_SOURCE);
 }
 
 /**
- * Parses the active Next.js build id from Flame HTML so `_next/data/<buildId>/browse.json` can be fetched directly.
+ * Backfills Asura latest chapter labels for home cards when card HTML lacks chapter text.
  */
-function parseFlameBuildIdFromHtml(html: string): string | null {
-  const match = html.match(/"buildId":"([^"]+)"/);
-  return match?.[1] ?? null;
-}
-
-/**
- * Fetches Flame browse JSON through Next data endpoint as a fallback when HTML parsing is unreliable.
- */
-async function fetchFlameBrowseSeriesFromNextDataJson(
-  htmlOrBuildIdSource: string,
-): Promise<FlameBrowseSeriesJson[]> {
-  const buildId = parseFlameBuildIdFromHtml(htmlOrBuildIdSource);
-  if (!buildId) {
-    return [];
-  }
-  for (const base of [
-    "https://flamecomics.xyz",
-    "https://www.flamecomics.xyz",
-    "https://flamecomics.com",
-  ]) {
-    const jsonUrl = `${base}/_next/data/${buildId}/browse.json`;
-    const jsonText = await fetchHtmlWithOptions(
-      jsonUrl,
-      {
-        ...getFlameFetchOptions(base, "/browse", 30_000, 2),
-        onAttempt: flameAttemptLogger("browse-catalog", "browse-next-data-json-fetch"),
-      },
-    );
-    if (!jsonText) {
-      continue;
-    }
-    try {
-      const parsed = JSON.parse(jsonText) as {
-        pageProps?: { series?: FlameBrowseSeriesJson[] };
-      };
-      const series = Array.isArray(parsed.pageProps?.series)
-        ? parsed.pageProps.series
-        : [];
-      if (series.length > 0) {
-        return series;
-      }
-    } catch {
-      // Try the next domain.
-    }
-  }
-  return [];
-}
-
-/**
- * Fallback for environments where `/browse` may intermittently fail: derive the Next build id from the home page
- * and request `/_next/data/<buildId>/browse.json` directly.
- */
-async function fetchFlameBrowseSeriesFromHomeBuildJson(): Promise<FlameBrowseSeriesJson[]> {
-  for (const url of FLAME_HOME_URLS) {
-    const homeHtml = await fetchHtmlWithOptions(url, {
-      ...getFlameFetchOptions(new URL(url).origin, "/browse", 30_000, 2),
-      onAttempt: flameAttemptLogger("browse-catalog", "home-build-html-fetch"),
-    });
-    if (!homeHtml) {
-      continue;
-    }
-    const series = await fetchFlameBrowseSeriesFromNextDataJson(homeHtml);
-    if (series.length > 0) {
-      return series;
-    }
-  }
-  return [];
-}
-
-/**
- * Parses Flame browse card links and extracts chapter labels keyed by series slug.
- * Expected pattern: `/series/{id}/{token}` or `/novel/{id}/{token}` with visible "Chapter ..." text.
- */
-function parseFlameLatestChapterLabelsBySeriesSlug(
-  html: string,
-): Map<string, string> {
-  const out = new Map<string, string>();
-  const linkPattern =
-    /href="\/(series|novel)\/(\d+)\/[a-f0-9]{16}"[^>]*>([\s\S]*?)<\/a>/gi;
-  for (const match of html.matchAll(linkPattern)) {
-    const kind = match[1];
-    const id = match[2];
-    const rawText = decodeBasicHtmlEntities(
-      (match[3] ?? "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim(),
-    );
-    const chapterMatch = rawText.match(/Chapter\s+[\d.]+(?:\s*-\s*[^|]+)?/i);
-    if (!chapterMatch?.[0]) {
-      continue;
-    }
-    const seriesSlug = kind === "novel" ? `novel-${id}` : id;
-    if (!out.has(seriesSlug)) {
-      out.set(seriesSlug, chapterMatch[0].trim());
-    }
-  }
-  return out;
-}
-
-/**
- * Fetches Flame browse HTML and extracts the embedded series list.
- * Unlike Asura, Flame’s `/browse` SSR includes the **full** `pageProps.series` array in `__NEXT_DATA__`
- * (extra `?page=` URLs repeat the same payload); we do not paginate network requests for Flame.
- */
-async function fetchFlameBrowseHtml(): Promise<string> {
-  const attemptUrls: string[] = [];
-  for (const base of FLAME_BROWSE_URLS) {
-    attemptUrls.push(base);
-    attemptUrls.push(`${base}/`);
-    attemptUrls.push(`${base}?page=1`);
-    attemptUrls.push(`${base}?_=${Date.now()}`);
-  }
-  for (const url of attemptUrls) {
-    const html = await fetchHtmlWithOptions(url, {
-      ...getFlameFetchOptions(new URL(url).origin, "/browse", 30_000, 2),
-      onAttempt: flameAttemptLogger("browse-catalog", "browse-html-fetch"),
-    });
-    if (!html) {
-      continue;
-    }
-    if (html.includes("__NEXT_DATA__")) {
-      return html;
-    }
-  }
-  return "";
-}
-
-/**
- * Loads Flame browse rows from the best available browse HTML response.
- */
-async function fetchFlameBrowseRows(): Promise<LiveBrowseRow[]> {
-  const html = await fetchFlameBrowseHtml();
-  if (html) {
-    const htmlRows = parseFlameBrowseSeriesHtml(html);
-    if (htmlRows.length > 0) {
-      logFlameTier("browse-catalog", "browse-html-next-data", `rows=${htmlRows.length}`);
-      return htmlRows;
-    }
-    const jsonSeries = await fetchFlameBrowseSeriesFromNextDataJson(html);
-    const jsonRows = mapFlameBrowseSeriesToRows(jsonSeries);
-    if (jsonRows.length > 0) {
-      logFlameTier("browse-catalog", "browse-next-data-json", `rows=${jsonRows.length}`);
-      return jsonRows;
-    }
-  }
-
-  const homeBuildRows = mapFlameBrowseSeriesToRows(
-    await fetchFlameBrowseSeriesFromHomeBuildJson(),
-  );
-  if (homeBuildRows.length > 0) {
-    logFlameTier("browse-catalog", "home-build-json", `rows=${homeBuildRows.length}`);
-    return homeBuildRows;
-  }
-  logFlameTier("browse-catalog", "empty");
-  return [];
-}
-
-/**
- * Fetches Flame rows ordered by recency; falls back to Next data JSON when inline chapter links are unavailable.
- */
-async function fetchFlameBrowseRowsByRecency(): Promise<LiveBrowseRow[]> {
-  const html = await fetchFlameBrowseHtml();
-  if (!html) {
-    return [];
-  }
-  const fromHtml = parseFlameBrowseSeriesByRecency(html);
-  if (fromHtml.length > 0) {
-    return fromHtml;
-  }
-  const jsonSeries = await fetchFlameBrowseSeriesFromNextDataJson(html);
-  if (jsonSeries.length === 0) {
-    return [];
-  }
-  const sorted = [...jsonSeries].sort((a, b) => (b.last_edit ?? 0) - (a.last_edit ?? 0));
-  return mapFlameBrowseSeriesToRows(sorted);
-}
-
-/**
- * Backfills Flame latest chapter labels for home cards by asking the adapter only when the browse payload has no chapter text.
- * This runs on the home latest cache window (30m), not per request.
- */
-async function enrichFlameRowsWithLatestChapterLabels(
-  rows: LiveBrowseRow[],
-): Promise<LiveBrowseRow[]> {
-  const adapter = getSourceAdapter("flame-scans");
-  if (!adapter) {
-    return rows;
-  }
-  const out = [...rows];
-  /** Fewer parallel series-page fetches so Flame upstream is less likely to throttle or time out on Vercel. */
-  const CONCURRENCY = 4;
-  for (let i = 0; i < out.length; i += CONCURRENCY) {
-    const chunk = out.slice(i, i + CONCURRENCY);
-    const resolved = await Promise.all(
-      chunk.map(async (row) => {
-        if (row.latestChapterLabel?.trim()) {
-          return row;
-        }
-        const extras = await fetchFlameSeriesOverviewHomeExtras(row.seriesSlug);
-        let merged: LiveBrowseRow = {
-          ...row,
-          coverImageUrl: extras.coverImageUrl || row.coverImageUrl,
-          latestChapterLabel: extras.latestChapterTitle ?? row.latestChapterLabel,
-        };
-        if (!merged.latestChapterLabel?.trim()) {
-          const chapters = await adapter.listSeriesChapters(row.seriesSlug);
-          if (chapters.length > 0) {
-            const latest = chapters[chapters.length - 1];
-            merged = {
-              ...merged,
-              latestChapterLabel: latest?.title?.trim() || merged.latestChapterLabel,
-            };
-          }
-        }
-        return merged;
-      }),
-    );
-    for (let j = 0; j < resolved.length; j += 1) {
-      out[i + j] = resolved[j];
-    }
-  }
-  return out;
-}
-
-/**
- * Backfills Asura latest chapter labels for home cards using the live adapter when card HTML lacks chapter text.
- * This runs on the home latest cache window (30m), not per request.
- */
-async function enrichAsuraRowsWithLatestChapterLabels(
-  rows: LiveBrowseRow[],
-): Promise<LiveBrowseRow[]> {
+async function enrichAsuraRowsWithLatestChapterLabels(rows: LiveBrowseRow[]): Promise<LiveBrowseRow[]> {
   const adapter = getSourceAdapter("asura-scans");
   if (!adapter) {
     return rows;
@@ -756,10 +222,7 @@ async function enrichAsuraRowsWithLatestChapterLabels(
           return row;
         }
         const latest = chapters[chapters.length - 1];
-        return {
-          ...row,
-          latestChapterLabel: latest?.title?.trim() || row.latestChapterLabel,
-        };
+        return { ...row, latestChapterLabel: latest?.title?.trim() || row.latestChapterLabel };
       }),
     );
     for (let j = 0; j < resolved.length; j += 1) {
@@ -770,45 +233,7 @@ async function enrichAsuraRowsWithLatestChapterLabels(
 }
 
 /**
- * Converts a live scrape row into the shared catalog highlight shape for grids and pagination.
- */
-function liveRowToHighlight(row: LiveBrowseRow): CatalogHighlight {
-  return {
-    id: `live-${row.sourceKey}-${row.seriesSlug}`,
-    seriesSlug: row.seriesSlug,
-    title: row.title,
-    coverImageUrl: row.coverImageUrl,
-    sourceName: row.sourceKey === "asura-scans" ? "Asura Scans" : "Flame Comics",
-    sourceKey: row.sourceKey,
-    genres: [],
-    latestChapter: row.latestChapterLabel
-      ? { title: row.latestChapterLabel }
-      : undefined,
-  };
-}
-
-/**
- * Curated fallback when Asura’s first browse page is empty or unreachable.
- */
-function fallbackAsuraLatestHighlights(): CatalogHighlight[] {
-  return CATALOG_HIGHLIGHTS.filter((h) => h.sourceKey === "asura-scans").slice(
-    0,
-    HOME_LATEST_PER_SOURCE,
-  );
-}
-
-/**
- * Curated fallback when Flame browse JSON is missing or unreachable.
- */
-function fallbackFlameLatestHighlights(): CatalogHighlight[] {
-  return CATALOG_HIGHLIGHTS.filter((h) => h.sourceKey === "flame-scans").slice(
-    0,
-    HOME_LATEST_PER_SOURCE,
-  );
-}
-
-/**
- * Loads Asura series in browse-page order (first page only) for the home dashboard; revalidates on a shorter TTL than the full crawl.
+ * Loads Asura series in browse-page order for the home dashboard.
  */
 export function getHomeLatestAsuraHighlights(): Promise<CatalogHighlight[]> {
   return unstable_cache(
@@ -829,77 +254,15 @@ export function getHomeLatestAsuraHighlights(): Promise<CatalogHighlight[]> {
         return fallbackAsuraLatestHighlights();
       }
       const enriched = await enrichAsuraRowsWithLatestChapterLabels(rows);
-      // Chapter labels and coarse format labels are extracted from card HTML at parse time.
-      // This avoids per-series adapter calls and per-row `/comics/{slug}` lookups on home requests.
       return enriched.map(liveRowToHighlight);
     },
-    ["home-latest-asura", "v5"],
+    ["home-latest-asura", "v6"],
     { revalidate: HOME_LATEST_REVALIDATE_SEC },
   )();
 }
 
 /**
- * Loads Flame series from the home page JSON (Latest row) for the dashboard.
- * Home page JSON contains robust chapter labels in its embedded state.
- */
-export function getHomeLatestFlameHighlights(): Promise<CatalogHighlight[]> {
-  return unstable_cache(
-    async () => {
-      for (const homeUrl of FLAME_HOME_URLS) {
-        const html = await fetchHtmlWithOptions(homeUrl, {
-          ...getFlameFetchOptions(new URL(homeUrl).origin, "/browse", 30_000, 2),
-          onAttempt: flameAttemptLogger("home-latest", "home-json-fetch"),
-        });
-        if (!html) {
-          continue;
-        }
-        const match = html.match(
-          /<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/,
-        );
-        if (match?.[1]) {
-          try {
-            const data = JSON.parse(match[1]);
-            const blocks = data.props?.pageProps?.latestEntries?.blocks;
-            if (Array.isArray(blocks) && Array.isArray(blocks[0]?.series)) {
-              let rows = mapFlameBrowseSeriesToRows(
-                blocks[0].series as FlameBrowseSeriesJson[],
-              )
-                .filter((row) => !isFlameWebNovelSeriesSlug(row.seriesSlug))
-                .slice(0, HOME_LATEST_PER_SOURCE);
-              if (rows.length > 0) {
-                // Even with JSON, we run the enricher to handle any cards missing chapter info (safety).
-                rows = await enrichFlameRowsWithLatestChapterLabels(rows);
-                logFlameTier("home-latest", "home-json", `host=${homeUrl} rows=${rows.length}`);
-                return rows.map(liveRowToHighlight);
-              }
-            }
-          } catch {
-            // Try next host, then browse-based fallback below.
-          }
-        }
-      }
-
-      // Production resilience fallback: if Flame home JSON fetch/parsing fails, use browse recency rows
-      // (full live scrape path) before dropping to curated-only cards.
-      const browseRows = (await fetchFlameBrowseRowsByRecency())
-        .filter((row) => !isFlameWebNovelSeriesSlug(row.seriesSlug))
-        .slice(0, HOME_LATEST_PER_SOURCE);
-      if (browseRows.length > 0) {
-        const enriched = await enrichFlameRowsWithLatestChapterLabels(browseRows);
-        logFlameTier("home-latest", "browse-recency", `rows=${enriched.length}`);
-        return enriched.map(liveRowToHighlight);
-      }
-
-      logFlameTier("home-latest", "curated-fallback", `rows=${HOME_LATEST_PER_SOURCE}`);
-      return fallbackFlameLatestHighlights();
-    },
-    ["home-latest-flame", "v12"],
-    { revalidate: HOME_LATEST_REVALIDATE_SEC },
-  )();
-}
-
-/**
- * Merges live Asura rows with curated entries that are missing from the site list (e.g. delisted slug).
+ * Merges live Asura rows with curated entries missing from live lists.
  */
 function mergeAsuraWithCurated(
   live: LiveBrowseRow[],
@@ -909,9 +272,7 @@ function mergeAsuraWithCurated(
   for (const row of live) {
     map.set(row.seriesSlug, liveRowToHighlight(row));
   }
-  const bases = new Set(
-    [...map.keys()].map((slug) => stripAsuraHashSuffix(slug)),
-  );
+  const bases = new Set([...map.keys()].map((slug) => stripAsuraHashSuffix(slug)));
   for (const c of curated) {
     if (c.sourceKey !== "asura-scans") {
       continue;
@@ -927,94 +288,26 @@ function mergeAsuraWithCurated(
 }
 
 /**
- * Merges live Flame rows with curated-only series ids not present in the browse payload.
- */
-function mergeFlameWithCurated(
-  live: LiveBrowseRow[],
-  curated: CatalogHighlight[],
-): CatalogHighlight[] {
-  const map = new Map<string, CatalogHighlight>();
-  for (const row of live) {
-    map.set(row.seriesSlug, liveRowToHighlight(row));
-  }
-  for (const c of curated) {
-    if (c.sourceKey === "flame-scans" && !map.has(c.seriesSlug)) {
-      map.set(c.seriesSlug, c);
-    }
-  }
-  return [...map.values()].sort((a, b) => a.title.localeCompare(b.title));
-}
-
-/**
- * Cached Asura browse scrape (hourly) to avoid hammering the host on every paginated request.
+ * Cached Asura browse scrape to avoid host hammering across paginated requests.
  */
 function getCachedAsuraLiveRows(): Promise<LiveBrowseRow[]> {
-  return unstable_cache(
-    async () => fetchAllAsuraBrowseRows(),
-    ["live-asura-browse-series", "v4"],
-    { revalidate: 3600 },
-  )();
+  return unstable_cache(async () => fetchAllAsuraBrowseRows(), ["live-asura-browse-series", "v5"], {
+    revalidate: 3600,
+  })();
 }
 
 /**
- * Cached Flame browse scrape (hourly).
- */
-function getCachedFlameLiveRows(): Promise<LiveBrowseRow[]> {
-  return unstable_cache(
-    async () => {
-      const rows = await fetchFlameBrowseRows();
-      if (rows.length === 0) {
-        // Throw so stale cache remains usable during transient upstream failures.
-        throw new Error("Flame browse scrape returned zero rows.");
-      }
-      return rows;
-    },
-    ["live-flame-browse-series", "v9"],
-    { revalidate: 3600 },
-  )();
-}
-
-/**
- * Builds the full browse catalog for one source: live site list plus curated-only supplements.
+ * Builds the full browse catalog for one source key.
  */
 export async function buildLiveBrowseCatalogForSource(
   sourceKey: BrowseSourceKey,
 ): Promise<CatalogHighlight[]> {
-  if (sourceKey === "asura-scans") {
-    const live = await getCachedAsuraLiveRows();
-    if (live.length === 0) {
-      return CATALOG_HIGHLIGHTS.filter((h) => h.sourceKey === "asura-scans");
-    }
-    return mergeAsuraWithCurated(live, CATALOG_HIGHLIGHTS);
+  if (sourceKey !== "asura-scans") {
+    return [];
   }
-  let flameRows: LiveBrowseRow[] = [];
-  try {
-    const live = await getCachedFlameLiveRows();
-    flameRows = live.filter((row) => !isFlameWebNovelSeriesSlug(row.seriesSlug));
-    logFlameTier("browse-catalog", "cached-live-rows", `rows=${flameRows.length}`);
-  } catch {
-    // If cache revalidation failed, retry direct fetch once before using curated fallback.
-    const retryRows = await fetchFlameBrowseRows();
-    flameRows = retryRows.filter((row) => !isFlameWebNovelSeriesSlug(row.seriesSlug));
-    logFlameTier("browse-catalog", "cache-retry-direct-fetch", `rows=${flameRows.length}`);
+  const live = await getCachedAsuraLiveRows();
+  if (live.length === 0) {
+    return CATALOG_HIGHLIGHTS.filter((h) => h.sourceKey === "asura-scans");
   }
-  if (flameRows.length === 0) {
-    const retryRows = await fetchFlameBrowseRows();
-    flameRows = retryRows.filter((row) => !isFlameWebNovelSeriesSlug(row.seriesSlug));
-    logFlameTier("browse-catalog", "second-direct-fetch", `rows=${flameRows.length}`);
-  }
-  if (flameRows.length === 0) {
-    const dbFallbackRows = (await loadFlameBrowseRowsFromSeriesCache()).filter(
-      (row) => !isFlameWebNovelSeriesSlug(row.seriesSlug),
-    );
-    if (dbFallbackRows.length > 0) {
-      logFlameTier("browse-catalog", "series-cache-fallback", `rows=${dbFallbackRows.length}`);
-      return mergeFlameWithCurated(dbFallbackRows, CATALOG_HIGHLIGHTS);
-    }
-    logFlameTier("browse-catalog", "curated-fallback");
-    return CATALOG_HIGHLIGHTS.filter((h) => h.sourceKey === "flame-scans");
-  }
-  await persistFlameBrowseRowsToSeriesCache(flameRows);
-  logFlameTier("browse-catalog", "merge-live-curated", `rows=${flameRows.length}`);
-  return mergeFlameWithCurated(flameRows, CATALOG_HIGHLIGHTS);
+  return mergeAsuraWithCurated(live, CATALOG_HIGHLIGHTS);
 }

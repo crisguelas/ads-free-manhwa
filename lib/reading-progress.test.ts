@@ -7,11 +7,11 @@ import { parseReadingProgressBody } from "@/lib/reading-progress";
  */
 test("parseReadingProgressBody accepts a well-formed body", () => {
   const result = parseReadingProgressBody({
-    sourceKey: "flame-scans",
-    seriesSlug: "2",
-    chapterSlug: "abcdabcdabcdabcd",
+    sourceKey: "asura-scans",
+    seriesSlug: "solo-leveling",
+    chapterSlug: "chapter-200",
     chapterTitle: "Chapter 1",
-    chapterUrl: "https://flamecomics.xyz/series/2/abcdabcdabcdabcd",
+    chapterUrl: "https://asurascans.com/comics/solo-leveling/chapter-200",
     pageNumber: 3,
   });
   assert.equal(result.ok, true);

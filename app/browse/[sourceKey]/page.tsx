@@ -24,7 +24,7 @@ function parsePage(raw: string | undefined): number {
 }
 
 /**
- * Per-source catalog: all curated series for Asura or Flame with server-side pagination.
+ * Per-source catalog: all curated/live series with server-side pagination.
  */
 export default async function BrowseSourcePage({ params, searchParams }: BrowseSourcePageProps) {
   const { sourceKey: rawKey } = await params;

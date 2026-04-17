@@ -1,5 +1,4 @@
 import { AsuraSourceAdapter } from "@/lib/sources/adapters/asura-source-adapter";
-import { FlameSourceAdapter } from "@/lib/sources/adapters/flame-source-adapter";
 import type { SourceAdapter } from "@/lib/sources/types";
 
 /**
@@ -12,10 +11,6 @@ function createAdapterRegistry(): Map<string, SourceAdapter> {
     [
       "asura-scans",
       new AsuraSourceAdapter(),
-    ],
-    [
-      "flame-scans",
-      new FlameSourceAdapter(),
     ],
   ]);
 }

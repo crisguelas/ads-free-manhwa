@@ -25,16 +25,16 @@ This app provides a clean reading experience with a premium UI while keeping the
 ## Current Scope
 
 - Core reading flow:
-  - Home page with separate live “latest updates” panels for Asura and Flame (cached ~30 minutes), source shortcuts, and continue-reading when signed in; full per-source grids and pagination at `/browse/asura-scans` and `/browse/flame-scans` (20 series per page; lists from each site’s live browse index ~1 hour, merged with curated highlights so delisted titles can still appear)
+  - Home page with a live “latest updates” panel for Asura (cached ~30 minutes), source shortcuts, and continue-reading when signed in; full per-source grid and pagination at `/browse/asura-scans` (20 series per page; list from the site’s live browse index ~1 hour, merged with curated highlights so delisted titles can still appear)
   - Bookmarks page at `/bookmarks` (signed-in); series pages can bookmark the first chapter via `POST /api/bookmarks` (`seriesSlug`, `chapterSlug`, optional `chapterTitle`) and remove with `DELETE /api/bookmarks?id=…`
-  - Manhwa detail page with chapter list (opens for any series slug on the live Asura/Flame browse index or curated highlights, without a `Follow` row; follows still preferred for library metadata)
+  - Manhwa detail page with chapter list (opens for any series slug on the live Asura browse index or curated highlights, without a `Follow` row; follows still preferred for library metadata)
   - Chapter reader page with vertical page images (adapter URLs), resume scroll, prev/next chapter links, and server-persisted page progress (`ReadingHistory` for the signed-in user); add `?start=1` on a chapter URL to reopen from page 1
   - Email + password accounts with HttpOnly session cookie (`AUTH_SECRET`); library, history, and reader routes require login
-- Home catalog covers: `lib/catalog-covers.ts` prefers live `og:image` from Asura/Flame series pages (cached); `lib/featured-series.ts` holds fallbacks; `RemoteCoverImage` swaps broken URLs for a placeholder. Continue reading uses the same `resolveSeriesCoverUrl` path when the user has no matching library row or `Follow.coverImageUrl` is empty.
+- Home catalog covers: `lib/catalog-covers.ts` prefers live `og:image` from Asura series pages (cached); `lib/featured-series.ts` holds fallbacks; `RemoteCoverImage` swaps broken URLs for a placeholder. Continue reading uses the same `resolveSeriesCoverUrl` path when the user has no matching library row or `Follow.coverImageUrl` is empty.
 - Scraper-first data strategy:
   - Fetch chapter/page content from scanlation sources at runtime
-  - **Asura** and **Flame Comics** only (no other sources in UI or seed). **Browse / home “latest”** lists are filtered to **manhwa, manga, manhua, and webtoon**: Flame uses each row’s `type` from browse JSON (and omits web-novel `novel_id` entries); Asura walks every `/browse?page=` until a page has no series cards (the site’s pagination links only show a small window, so the scraper cannot rely on the first page’s nav). Asura resolves the format pill on each `/comics/{slug}` page during the cached scrape (parallel fetches). Numeric Flame URLs stay `/manhwa/{id}`.
-  - Asura and Flame Comics live adapters (chapter lists + reader image extraction)
+  - **Asura** only (no other sources in UI or seed). **Browse / home “latest”** lists are filtered to **manhwa, manga, manhua, and webtoon**. Asura walks every `/browse?page=` until a page has no series cards (the site’s pagination links only show a small window, so the scraper cannot rely on the first page’s nav), then resolves the format pill on each `/comics/{slug}` page during the cached scrape (parallel fetches).
+  - Asura live adapter (chapter lists + reader image extraction)
   - Avoid full permanent content mirroring in early versions
   - Store app-owned user state in database
   - Persist lightweight chapter cache and fall back to stale cache when live parsing fails
@@ -62,7 +62,7 @@ Out of scope for now:
 
 ### Source integration roadmap
 
-- **Done:** Asura (first live adapter) and [Flame Comics](https://flamecomics.xyz/) (`flame-scans`) live adapter.
+- **Done:** Asura live adapter.
 - **Next:** Optional admin invite flow, follow management UI, and bookmarks polish.
 - **Extensibility:** New translator groups are added by creating a `Source` row + a new adapter class + one registry entry; see `lib/sources/README.md`.
 
@@ -131,7 +131,6 @@ npm run dev
 - `npm run test:integration` - DB integration tests (requires `DATABASE_URL`, e.g. password reset flow)
 - `npm run build` - build for production
 - `npm run backfill:follow-titles` - manual run of `Follow.seriesTitle` HTML-entity normalization (same logic as production startup; requires `DATABASE_URL`)
-- `npm run cleanup:flame-novel-reading-history` - deletes legacy `ReadingHistory` rows for Flame web-novel slugs (`novel-{id}`) only; safe to re-run (requires `DATABASE_URL`)
 - `npx prisma studio` - inspect database records
 
 ### Production: follow title backfill

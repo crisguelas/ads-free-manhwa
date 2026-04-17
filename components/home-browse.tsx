@@ -8,7 +8,7 @@ type HomeBrowseProps = {
 };
 
 /**
- * Home dashboard: continue reading, source shortcuts, and two live “latest updates” columns (Asura + Flame).
+ * Home dashboard: continue reading, source shortcuts, and live Asura latest updates.
  */
 export function HomeBrowse({ data }: HomeBrowseProps) {
   return (
@@ -41,15 +41,6 @@ export function HomeBrowse({ data }: HomeBrowseProps) {
               viewAllHref="/browse/asura-scans"
               viewAllLabel="Browse all Asura series"
               accentClass="border-l-4 border-l-violet-600"
-            />
-            <SourceLatestUpdatesSection
-              eyebrow={BROWSE_SOURCE_LABELS["flame-scans"]}
-              title="Latest Updates"
-              description=""
-              items={data.latestFlame}
-              viewAllHref="/browse/flame-scans"
-              viewAllLabel="Browse all Flame series"
-              accentClass="border-l-4 border-l-amber-500"
             />
           </div>
         </div>

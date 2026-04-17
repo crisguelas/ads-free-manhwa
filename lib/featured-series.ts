@@ -22,9 +22,9 @@ export type CatalogHighlight = {
 };
 
 /**
- * Static highlights for Asura (`asurascans.com`) and Flame (`flamecomics.xyz`).
- * Asura slugs are resolved by the live adapter; Flame uses numeric series ids as `seriesSlug`.
- * Static URLs are fallbacks only: `lib/catalog-covers.ts` refreshes Asura/Flame covers from each site’s `og:image` on the home load (cached). Client `RemoteCoverImage` hides broken hotlinks.
+ * Static highlights for Asura (`asurascans.com`).
+ * Asura slugs are resolved by the live adapter.
+ * Static URLs are fallbacks only: `lib/catalog-covers.ts` refreshes Asura covers from site `og:image` metadata (cached). Client `RemoteCoverImage` hides broken hotlinks.
  */
 export const CATALOG_HIGHLIGHTS: CatalogHighlight[] = [
   // Asura Scans
@@ -83,56 +83,5 @@ export const CATALOG_HIGHLIGHTS: CatalogHighlight[] = [
     sourceKey: "asura-scans",
     genres: ["Action", "Martial arts", "Fantasy"],
     subtitle: "Murim · sci-fi",
-  },
-  // Flame Comics
-  {
-    id: "flame-orv",
-    seriesSlug: "2",
-    title: "Omniscient Reader's Viewpoint",
-    coverImageUrl: "https://cdn.flamecomics.xyz/uploads/images/series/2/thumbnail.png",
-    sourceName: "Flame Comics",
-    sourceKey: "flame-scans",
-    genres: ["Action", "Fantasy"],
-    subtitle: "Same story · Flame edition",
-  },
-  {
-    id: "flame-sl",
-    seriesSlug: "1",
-    title: "Solo Leveling",
-    coverImageUrl: "https://cdn.flamecomics.xyz/uploads/images/series/1/thumbnail.png",
-    sourceName: "Flame Comics",
-    sourceKey: "flame-scans",
-    genres: ["Action", "Fantasy"],
-    subtitle: "Hunter progression",
-  },
-  {
-    id: "flame-bog",
-    seriesSlug: "3",
-    title: "Berserk of Gluttony",
-    coverImageUrl: "https://cdn.flamecomics.xyz/uploads/images/series/3/thumbnail.png",
-    sourceName: "Flame Comics",
-    sourceKey: "flame-scans",
-    genres: ["Action", "Dark fantasy"],
-    subtitle: "Curse · revenge",
-  },
-  {
-    id: "flame-ts",
-    seriesSlug: "4",
-    title: "Trinity Seven",
-    coverImageUrl: "https://cdn.flamecomics.xyz/uploads/images/series/4/thumbnail.png",
-    sourceName: "Flame Comics",
-    sourceKey: "flame-scans",
-    genres: ["Fantasy", "Harem", "School"],
-    subtitle: "Magic academy",
-  },
-  {
-    id: "flame-um",
-    seriesSlug: "5",
-    title: "Unnamed Memory",
-    coverImageUrl: "https://cdn.flamecomics.xyz/uploads/images/series/5/thumbnail.png",
-    sourceName: "Flame Comics",
-    sourceKey: "flame-scans",
-    genres: ["Fantasy", "Romance"],
-    subtitle: "Curse · court intrigue",
   },
 ];

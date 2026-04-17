@@ -4,7 +4,7 @@ import { getHomePageData } from "@/lib/home-data";
 export const revalidate = 300;
 
 /**
- * Renders the home dashboard with live Asura/Flame latest sections; full grids live under `/browse/[sourceKey]`.
+ * Renders the home dashboard with live source latest sections; full grids live under `/browse/[sourceKey]`.
  */
 export default async function Home() {
   const data = await getHomePageData();

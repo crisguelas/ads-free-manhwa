@@ -9,7 +9,6 @@ import { PrismaClient } from "../lib/generated/prisma/client";
  */
 const SOURCE_SEEDS = [
   { key: "asura-scans", name: "Asura Scans", baseUrl: "https://asuracomic.net" },
-  { key: "flame-scans", name: "Flame Comics", baseUrl: "https://flamecomics.xyz/" },
 ] as const;
 
 /**
@@ -44,7 +43,7 @@ async function main(): Promise<void> {
     }
 
     /**
-     * Drops legacy sources no longer supported (Reaper removed; app targets Asura + Flame only).
+     * Drops legacy sources no longer supported by the app.
      */
     await prisma.source.deleteMany({
       where: { key: "reaper-scans" },
@@ -68,10 +67,6 @@ async function main(): Promise<void> {
       where: { key: "asura-scans" },
     });
 
-    const flameSource = await prisma.source.findUniqueOrThrow({
-      where: { key: "flame-scans" },
-    });
-
     await prisma.follow.upsert({
       where: {
         userId_sourceId_seriesSlug: {
@@ -90,30 +85,6 @@ async function main(): Promise<void> {
         seriesSlug: "the-beginning-after-the-end",
         seriesTitle: normalizeFollowSeriesTitleForStorage("The Beginning After the End"),
         coverImageUrl: "https://example.com/covers/tbate.jpg",
-      },
-    });
-
-    /**
-     * Flame adapter uses numeric series id as `seriesSlug` (e.g. `2` = Omniscient Reader's Viewpoint).
-     */
-    await prisma.follow.upsert({
-      where: {
-        userId_sourceId_seriesSlug: {
-          userId: devUser.id,
-          sourceId: flameSource.id,
-          seriesSlug: "2",
-        },
-      },
-      update: {
-        seriesTitle: normalizeFollowSeriesTitleForStorage("Omniscient Reader's Viewpoint"),
-        coverImageUrl: "https://cdn.flamecomics.xyz/uploads/images/series/2/thumbnail.png",
-      },
-      create: {
-        userId: devUser.id,
-        sourceId: flameSource.id,
-        seriesSlug: "2",
-        seriesTitle: normalizeFollowSeriesTitleForStorage("Omniscient Reader's Viewpoint"),
-        coverImageUrl: "https://cdn.flamecomics.xyz/uploads/images/series/2/thumbnail.png",
       },
     });
 

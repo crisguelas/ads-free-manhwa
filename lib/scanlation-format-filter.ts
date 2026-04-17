@@ -1,6 +1,6 @@
 /**
  * Shared allowlist for “comic strip” formats surfaced in browse/home catalog scrapes.
- * Excludes text novels, generic “comic”, and other Flame/Asura labels (e.g. Russian) unless added here.
+ * Excludes text novels, generic “comic”, and other unsupported labels unless added here.
  */
 const SCANLATION_FORMAT_ALLOWLIST = new Set([
   "manhwa",

@@ -90,7 +90,7 @@ type ResolvedSeriesContext = {
 
 /**
  * Resolves which source and title apply to `seriesSlug` for this user (also used by bookmark API).
- * Prefer an explicit `Follow`; otherwise curated highlights; otherwise any slug present on the live Asura/Flame browse index (same as home/browse tiles).
+ * Prefer an explicit `Follow`; otherwise curated highlights; otherwise any slug present on the live browse index.
  */
 export async function resolveSeriesContextForUser(
   seriesSlug: string,
@@ -117,7 +117,7 @@ export async function resolveSeriesContextForUser(
   });
 
   if (followRows.length > 0) {
-    const follow = pickRowWhenSeriesSlugSpansScanSources(followRows, seriesSlug);
+    const follow = pickRowWhenSeriesSlugSpansScanSources(followRows);
     return {
       seriesSlug: follow.seriesSlug,
       seriesTitle: displayFollowSeriesTitle(follow.seriesTitle),
@@ -173,21 +173,15 @@ export async function resolveSeriesContextForUser(
   }
 
   // Last resort: Live Scrape (only for brand new series not yet in our search/cache maps)
-  const [asuraList, flameList] = await Promise.all([
-    buildLiveBrowseCatalogForSource("asura-scans"),
-    buildLiveBrowseCatalogForSource("flame-scans"),
-  ]);
-  const asuraHit = asuraList.find((h) => h.seriesSlug.toLowerCase().startsWith(seriesSlug.toLowerCase()));
-  const flameHit = flameList.find((h) => h.seriesSlug.toLowerCase().startsWith(seriesSlug.toLowerCase()));
-  let liveEntry = asuraHit ?? flameHit;
-  if (asuraHit && flameHit) {
-    liveEntry = /^\d+$/.test(seriesSlug) ? flameHit : asuraHit;
-  }
+  const asuraList = await buildLiveBrowseCatalogForSource("asura-scans");
+  const liveEntry = asuraList.find((h) =>
+    h.seriesSlug.toLowerCase().startsWith(seriesSlug.toLowerCase()),
+  );
 
   if (!liveEntry) {
     // Smart Fallback 2: Direct site resolution (final attempt)
     // If we can't find it in our lists, maybe it's just a new hashed slug we haven't seen.
-    // We try to ping Asura / Flame once to see if the page exists or redirects.
+    // We try to ping Asura once to see if the page exists or redirects.
     try {
       const sourceRow = await prisma.source.findFirst({
         where: { key: "asura-scans", isEnabled: true },
@@ -258,7 +252,7 @@ export type SeriesDetailData = {
   sourceName: string;
   adapterName: string | null;
   sourceBaseUrl: string;
-  /** Short series description for the detail hero (meta / Flame JSON / cache). */
+  /** Short series description for the detail hero (meta/cache). */
   synopsis: string | null;
   coverImageUrl: string | null;
   latestChapterSlug: string | null;

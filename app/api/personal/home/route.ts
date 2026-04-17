@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth/current-user";
-import { isFlameWebNovelSeriesSlug } from "@/lib/flame-series-slug";
 import {
   firstFollowMapValue,
   followRowLookupKeys,
@@ -100,9 +99,6 @@ export async function GET() {
     for (const row of historyRows) {
       if (recentReadRows.length >= CONTINUE_READING_MAX_SERIES) {
         break;
-      }
-      if (row.source.key === "flame-scans" && isFlameWebNovelSeriesSlug(row.seriesSlug)) {
-        continue;
       }
       const norm = normalizeContinueReadingSeriesKey(row.source.key, row.seriesSlug);
       const dedupeKey = `${row.source.id}:${norm}`;

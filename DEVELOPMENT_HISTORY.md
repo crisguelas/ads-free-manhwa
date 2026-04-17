@@ -10,6 +10,33 @@ This file tracks implementation steps so future developers can understand what w
 
 ## Timeline
 
+### 2026-04-17 - Remove Flame Comics integration (Asura-only)
+
+**Objective**
+- Remove all `flame-scans` / Flame Comics runtime code so the app runs with Asura as the only active source.
+
+**Changes made**
+- Removed Flame source implementation and helpers:
+  - deleted `lib/sources/adapters/flame-source-adapter.ts` (+ tests/fixtures)
+  - deleted `lib/flame-series-slug.ts`
+  - deleted Flame cleanup script pair (`lib/run-delete-flame-novel-reading-history.ts`, `scripts/delete-flame-novel-reading-history.ts`)
+- Updated source wiring and data flow to Asura-only:
+  - `lib/sources/registry.ts`, `lib/browse-constants.ts`, `lib/home-data.ts`, `components/home-browse.tsx`, `lib/live-source-browse.ts`
+  - removed Flame-specific fallback/enrichment paths from `lib/reader-data.ts`, `lib/catalog-covers.ts`, `lib/series-synopsis.ts`, `app/api/personal/home/route.ts`
+  - updated seeds in `prisma/seed.ts` to stop creating `flame-scans` and delete legacy Flame source rows
+- Updated tests and scripts:
+  - removed Flame adapter test from `package.json`
+  - updated `lib/live-source-browse.test.ts`, `lib/continue-reading-display.test.ts`, `lib/follow-source-disambiguation.test.ts`, `lib/reading-progress.test.ts`
+
+**Verification**
+- `npm run lint`
+- `npm run build`
+
+**Next**
+- If a new source is reintroduced, add it via `Source` seed row + adapter + registry entry and update docs/routes in the same milestone.
+
+---
+
 ### 2026-04-16 - Flame browse last-known-good DB fallback (SeriesCache)
 
 **Objective**

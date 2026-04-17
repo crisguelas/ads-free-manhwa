@@ -31,7 +31,7 @@ export async function fetchHtml(url: string, timeoutMs: number = 12_000): Promis
 }
 
 /**
- * Same as `fetchHtml` but allows Referer and custom timeout (used for Flame overview pages and browse).
+ * Same as `fetchHtml` but allows Referer and custom timeout for source-specific fetches.
  */
 export async function fetchHtmlWithOptions(
   url: string,

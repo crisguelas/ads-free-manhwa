@@ -13,7 +13,7 @@ test("normalizeContinueReadingSeriesKey strips Asura hash slug suffix", () => {
     normalizeContinueReadingSeriesKey("asura-scans", "the-world-after-the-end-75e30c62"),
     "the-world-after-the-end",
   );
-  assert.equal(normalizeContinueReadingSeriesKey("flame-scans", "2"), "2");
+  assert.equal(normalizeContinueReadingSeriesKey("other-source", "2"), "2");
 });
 
 test("displaySeriesTitleForContinueCard strips trailing hash token from stored titles", () => {
@@ -44,22 +44,6 @@ test("splitSeriesAndChapterFromPageTitle parses standard page titles", () => {
     seriesPart: "Solo Leveling",
     chapterPart: "Chapter 164",
   });
-  assert.deepEqual(splitSeriesAndChapterFromPageTitle("Youngest Son Chapter 42 - Flame Comics"), {
-    seriesPart: "Youngest Son",
-    chapterPart: "Chapter 42",
-  });
-});
-
-test("resolveContinueReadingCarouselLabels uses page title for Flame numeric slug", () => {
-  const out = resolveContinueReadingCarouselLabels({
-    seriesTitle: null,
-    sourceKey: "flame-scans",
-    seriesSlug: "89",
-    chapterTitle: "Youngest Son of the Namcheon Clan Chapter 42 - Flame Comics",
-    chapterSlug: "abc",
-  });
-  assert.equal(out.seriesLine, "Youngest Son of the Namcheon Clan");
-  assert.equal(out.chapterLine, "Chapter 42");
 });
 
 test("resolveContinueReadingCarouselLabels fixes short follow title vs full page title", () => {

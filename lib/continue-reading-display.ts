@@ -115,7 +115,6 @@ function cleanChapterPageTitleForSplit(chapterTitle: string | null): string | nu
   let s = decodeBasicHtmlEntities(chapterTitle).trim();
   s = s.replace(/\s*-\s*(Read Online|Premium)\s*\|.*$/i, "").trim();
   s = s.replace(/\s*-\s*(Read Online|Premium)\s*$/i, "").trim();
-  s = s.replace(/\s*-\s*Flame Comics\s*$/i, "").trim();
   return s;
 }
 
@@ -161,7 +160,7 @@ export function splitSeriesAndChapterFromPageTitle(chapterTitle: string | null):
 }
 
 /**
- * Picks consistent series + chapter lines for carousel tiles using `<title>` shape when present (fixes Flame “Series 89” + title in wrong row, and short follow titles like “Solo” vs “Solo Leveling Chapter …”).
+ * Picks consistent series + chapter lines for carousel tiles using `<title>` shape when present.
  */
 export function resolveContinueReadingCarouselLabels(input: {
   seriesTitle: string | null;

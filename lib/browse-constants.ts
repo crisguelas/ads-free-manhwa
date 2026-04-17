@@ -1,5 +1,5 @@
 /**
- * How many series appear on each `/browse/[sourceKey]` page (Asura and Flame use the same cap).
+ * How many series appear on each `/browse/[sourceKey]` page.
  * Chosen so a 4-column grid shows five full rows per page at `sm` and wider breakpoints.
  */
 export const BROWSE_PAGE_SIZE = 20;
@@ -7,7 +7,7 @@ export const BROWSE_PAGE_SIZE = 20;
 /**
  * Source keys that have dedicated `/browse/[sourceKey]` catalog pages.
  */
-export const BROWSE_SOURCE_KEYS = ["asura-scans", "flame-scans"] as const;
+export const BROWSE_SOURCE_KEYS = ["asura-scans"] as const;
 
 /**
  * Union of allowed dynamic segment values under `/browse/`.
@@ -19,7 +19,6 @@ export type BrowseSourceKey = (typeof BROWSE_SOURCE_KEYS)[number];
  */
 export const BROWSE_SOURCE_LABELS: Record<BrowseSourceKey, string> = {
   "asura-scans": "Asura Scans",
-  "flame-scans": "Flame Comics",
 };
 
 /**

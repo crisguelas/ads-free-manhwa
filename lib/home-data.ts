@@ -3,6 +3,7 @@ import {
   getHomeLatestAsuraHighlights,
 } from "@/lib/live-source-browse";
 import { prisma } from "@/lib/prisma";
+import { SUPPORTED_SOURCE_KEYS } from "@/lib/supported-sources";
 
 /**
  * Static source rows used when the database is unreachable so the browse UI still renders.
@@ -62,6 +63,11 @@ export async function getHomePageData(): Promise<HomePageData> {
 
   try {
     const sources = await prisma.source.findMany({
+      where: {
+        key: {
+          in: [...SUPPORTED_SOURCE_KEYS],
+        },
+      },
       orderBy: { name: "asc" },
       select: {
         id: true,

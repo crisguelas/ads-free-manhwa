@@ -10,6 +10,32 @@ This file tracks implementation steps so future developers can understand what w
 
 ## Timeline
 
+### 2026-04-17 - Enforce Asura-only UI filters + purge legacy Flame rows
+
+**Objective**
+- Remove remaining user-visible Flame entries caused by old database rows and ensure all UI/API paths only expose supported sources.
+
+**Changes made**
+- Added `lib/supported-sources.ts` with `SUPPORTED_SOURCE_KEYS` runtime allowlist.
+- Applied source-key filtering (`asura-scans` only) in:
+  - `lib/home-data.ts` (home source list query)
+  - `app/api/personal/home/route.ts` (continue-reading + follow lookups)
+  - `app/api/search/route.ts` (search cache results)
+  - `lib/bookmarks-page-data.ts` (bookmarks/follows/cache lookups)
+  - `lib/reader-data.ts` (follow + cache context resolution)
+- Executed database cleanup to remove legacy Flame rows:
+  - deleted `ChapterCache`, `SeriesCache`, `Bookmark`, `ReadingHistory`, `Follow`, and `Source` records linked to `Source.key = 'flame-scans'`.
+
+**Verification**
+- `npm run lint`
+- `npm run build`
+- Deep grep sweep in `app/`, `components/`, and `lib/` confirms no Flame references remain.
+
+**Next**
+- Keep `SUPPORTED_SOURCE_KEYS` in sync whenever a new source is added so stale DB rows from disabled sources cannot reappear in UI.
+
+---
+
 ### 2026-04-17 - Remove Flame Comics integration (Asura-only)
 
 **Objective**

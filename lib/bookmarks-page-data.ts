@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { CATALOG_HIGHLIGHTS } from "@/lib/featured-series";
 import { displayFollowSeriesTitle } from "@/lib/follow-series-title";
 import { resolveSeriesContextForUser } from "@/lib/reader-data";
+import { SUPPORTED_SOURCE_KEYS } from "@/lib/supported-sources";
 
 /**
  * One bookmark row for the bookmarks list UI (chapter deep-link + metadata).
@@ -24,7 +25,14 @@ export type BookmarkListEntry = {
  */
 export async function getBookmarksForUser(userId: string): Promise<BookmarkListEntry[]> {
   const rows = await prisma.bookmark.findMany({
-    where: { userId },
+    where: {
+      userId,
+      source: {
+        key: {
+          in: [...SUPPORTED_SOURCE_KEYS],
+        },
+      },
+    },
     orderBy: { bookmarkedAt: "desc" },
     select: {
       id: true,
@@ -47,11 +55,26 @@ export async function getBookmarksForUser(userId: string): Promise<BookmarkListE
   
   const [follows, caches] = await Promise.all([
     prisma.follow.findMany({
-      where: { userId, seriesSlug: { in: seriesSlugs } },
+      where: {
+        userId,
+        seriesSlug: { in: seriesSlugs },
+        source: {
+          key: {
+            in: [...SUPPORTED_SOURCE_KEYS],
+          },
+        },
+      },
       select: { seriesSlug: true, sourceId: true, seriesTitle: true, coverImageUrl: true }
     }),
     prisma.seriesCache.findMany({
-      where: { seriesSlug: { in: seriesSlugs } },
+      where: {
+        seriesSlug: { in: seriesSlugs },
+        source: {
+          key: {
+            in: [...SUPPORTED_SOURCE_KEYS],
+          },
+        },
+      },
       select: { seriesSlug: true, sourceId: true, title: true, coverImageUrl: true }
     })
   ]);

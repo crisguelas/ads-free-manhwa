@@ -9,6 +9,7 @@ import {
 import { displayFollowSeriesTitle } from "@/lib/follow-series-title";
 import { resolveSeriesCoverUrl } from "@/lib/catalog-covers";
 import type { ContinueReadingCard } from "@/lib/home-data";
+import { SUPPORTED_SOURCE_KEYS } from "@/lib/supported-sources";
 
 /** Raw history rows to scan when deduping by series (ordered newest-first). */
 const CONTINUE_READING_HISTORY_FETCH = 320;
@@ -30,7 +31,14 @@ async function attachFollowCoversToRecentReads(
   }
 
   const followRows = await prisma.follow.findMany({
-    where: { userId },
+    where: {
+      userId,
+      source: {
+        key: {
+          in: [...SUPPORTED_SOURCE_KEYS],
+        },
+      },
+    },
     select: {
       sourceId: true,
       seriesSlug: true,
@@ -82,7 +90,14 @@ export async function GET() {
     }
 
     const historyRows = await prisma.readingHistory.findMany({
-      where: { userId: user.id },
+      where: {
+        userId: user.id,
+        source: {
+          key: {
+            in: [...SUPPORTED_SOURCE_KEYS],
+          },
+        },
+      },
       orderBy: { lastReadAt: "desc" },
       take: CONTINUE_READING_HISTORY_FETCH,
       select: {

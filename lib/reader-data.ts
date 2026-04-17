@@ -10,6 +10,7 @@ import {
   recordCacheSyncSuccess,
 } from "@/lib/sources/adapter-observability";
 import { getSourceAdapter } from "@/lib/sources/registry";
+import { SUPPORTED_SOURCE_KEYS } from "@/lib/supported-sources";
 
 const CHAPTER_CACHE_TTL_MS = 1000 * 60 * 30;
 
@@ -100,6 +101,11 @@ export async function resolveSeriesContextForUser(
     where: {
       seriesSlug: { equals: seriesSlug, mode: "insensitive" },
       userId,
+      source: {
+        key: {
+          in: [...SUPPORTED_SOURCE_KEYS],
+        },
+      },
     },
     select: {
       seriesSlug: true,
@@ -134,7 +140,12 @@ export async function resolveSeriesContextForUser(
   const cachedHit = await prisma.seriesCache.findFirst({
     where: {
       seriesSlug: { equals: seriesSlug, mode: "insensitive" },
-      source: { isEnabled: true },
+      source: {
+        isEnabled: true,
+        key: {
+          in: [...SUPPORTED_SOURCE_KEYS],
+        },
+      },
     },
     include: { source: { select: { id: true, key: true, name: true, baseUrl: true } } },
   });
@@ -155,7 +166,12 @@ export async function resolveSeriesContextForUser(
   const fuzzyHit = await prisma.seriesCache.findFirst({
     where: {
       seriesSlug: { startsWith: seriesSlug, mode: "insensitive" },
-      source: { isEnabled: true },
+      source: {
+        isEnabled: true,
+        key: {
+          in: [...SUPPORTED_SOURCE_KEYS],
+        },
+      },
     },
     include: { source: { select: { id: true, key: true, name: true, baseUrl: true } } },
   });
@@ -184,7 +200,10 @@ export async function resolveSeriesContextForUser(
     // We try to ping Asura once to see if the page exists or redirects.
     try {
       const sourceRow = await prisma.source.findFirst({
-        where: { key: "asura-scans", isEnabled: true },
+        where: {
+          key: "asura-scans",
+          isEnabled: true,
+        },
       });
       if (sourceRow) {
         const url = `${sourceRow.baseUrl}/series/${seriesSlug}`;

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { CATALOG_HIGHLIGHTS } from "@/lib/featured-series";
+import { SUPPORTED_SOURCE_KEYS } from "@/lib/supported-sources";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -17,6 +18,11 @@ export async function GET(request: Request) {
         title: {
           contains: query,
           mode: "insensitive",
+        },
+        source: {
+          key: {
+            in: [...SUPPORTED_SOURCE_KEYS],
+          },
         },
       },
       take: 10,

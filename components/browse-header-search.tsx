@@ -42,7 +42,13 @@ export function BrowseHeaderSearch() {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  /** Set when the API returns an error shape or non-OK status so the panel can show feedback instead of vanishing. */
+  const [searchError, setSearchError] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  /** Latest trimmed query; used to ignore stale fetch completions after the user types ahead. */
+  const queryRef = useRef(query);
+
+  queryRef.current = query.trim();
 
   // Close dropdown when clicking outside (use composedPath so UA shadow controls still count as “inside”).
   useEffect(() => {
@@ -62,30 +68,50 @@ export function BrowseHeaderSearch() {
       setResults([]);
       setIsOpen(false);
       setIsLoading(false);
+      setSearchError(false);
       return;
     }
 
     const controller = new AbortController();
     const timer = setTimeout(async () => {
+      setIsOpen(true);
       setIsLoading(true);
+      setSearchError(false);
       try {
         const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`, {
           signal: controller.signal,
         });
+        if (queryRef.current !== q) {
+          return;
+        }
+        if (!res.ok) {
+          setResults([]);
+          setSearchError(true);
+          return;
+        }
         const data: unknown = await res.json();
+        if (queryRef.current !== q) {
+          return;
+        }
         if (!Array.isArray(data)) {
           setResults([]);
+          setSearchError(true);
           return;
         }
         setResults(data as SearchResult[]);
-        setIsOpen(true);
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") {
           return;
         }
+        if (queryRef.current === q) {
+          setResults([]);
+          setSearchError(true);
+        }
         console.error("Search fetch error:", err);
       } finally {
-        setIsLoading(false);
+        if (queryRef.current === q) {
+          setIsLoading(false);
+        }
       }
     }, 300); // 300ms debounce
 
@@ -114,12 +140,16 @@ export function BrowseHeaderSearch() {
         />
       </label>
 
-      {isOpen && (results.length > 0 || isLoading) && (
+      {isOpen && query.trim().length >= 2 && (
         <div className="absolute left-0 right-0 top-full z-[60] mt-2 overflow-hidden rounded-2xl border border-zinc-200/90 bg-white/90 shadow-xl shadow-zinc-900/10 backdrop-blur-xl animate-in fade-in slide-in-from-top-2 duration-200">
           <div className="max-h-[min(380px,70vh)] overflow-y-auto overscroll-contain px-2 py-2">
             {isLoading && results.length === 0 ? (
               <div className="flex items-center justify-center py-8">
                 <div className="h-5 w-5 animate-spin rounded-full border-2 border-violet-600 border-t-transparent" />
+              </div>
+            ) : searchError ? (
+              <div className="px-4 py-8 text-center text-sm text-zinc-500">
+                Couldn&apos;t load results. Check your connection and try again.
               </div>
             ) : results.length > 0 ? (
               <ul className="grid gap-1">

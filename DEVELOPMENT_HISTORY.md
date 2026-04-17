@@ -27,6 +27,24 @@ This file tracks implementation steps so future developers can understand what w
 
 ---
 
+### 2026-04-17 - Header search: keep panel open for empty and error responses
+
+**Objective**
+- Fix the dropdown dismissing as soon as loading finishes when the API returns zero rows or an error (previously the shell required `results.length > 0 || isLoading`).
+
+**Changes made**
+- `components/browse-header-search.tsx`: open the panel when the debounced fetch starts; render the shell whenever `isOpen` and the query length is still valid; show “No series found” or a short error message instead of unmounting; gate `setIsLoading(false)` and result application with the latest trimmed query to avoid stale updates.
+- `app/api/search/route.ts`: match `SeriesCache` rows by **title or `seriesSlug`** substring; static highlights also match slug substring so short queries surface more hits.
+
+**Verification**
+- `npm run lint`
+- `npm run build`
+
+**Next**
+- If “no results” is too common in production, widen `/api/search` matching (e.g. slug contains) or merge more catalog sources.
+
+---
+
 ### 2026-04-17 - Database residue cleanup (auth/bookmark/flame)
 
 **Objective**

@@ -3,6 +3,9 @@ import { prisma } from "@/lib/prisma";
 import { CATALOG_HIGHLIGHTS } from "@/lib/featured-series";
 import { SUPPORTED_SOURCE_KEYS } from "@/lib/supported-sources";
 
+/**
+ * Returns merged catalog + `SeriesCache` matches for the header search dropdown (title or slug substring).
+ */
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const query = searchParams.get("q")?.trim().toLowerCase();
@@ -15,15 +18,15 @@ export async function GET(request: Request) {
     // 1. Search in SeriesCache (Database)
     const dbResults = await prisma.seriesCache.findMany({
       where: {
-        title: {
-          contains: query,
-          mode: "insensitive",
-        },
         source: {
           key: {
             in: [...SUPPORTED_SOURCE_KEYS],
           },
         },
+        OR: [
+          { title: { contains: query, mode: "insensitive" } },
+          { seriesSlug: { contains: query, mode: "insensitive" } },
+        ],
       },
       take: 10,
       include: {
@@ -32,8 +35,10 @@ export async function GET(request: Request) {
     });
 
     // 2. Search in Static Highlights (Catalog)
-    const staticResults = CATALOG_HIGHLIGHTS.filter((h) =>
-      h.title.toLowerCase().includes(query)
+    const staticResults = CATALOG_HIGHLIGHTS.filter(
+      (h) =>
+        h.title.toLowerCase().includes(query) ||
+        h.seriesSlug.toLowerCase().includes(query),
     ).slice(0, 5);
 
     // 3. Merge and Deduplicate

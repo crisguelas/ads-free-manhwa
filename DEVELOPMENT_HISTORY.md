@@ -10,6 +10,25 @@ This file tracks implementation steps so future developers can understand what w
 
 ## Timeline
 
+### 2026-04-17 - Browse route simplification (Asura content at `/browse`)
+
+**Objective**
+- Move the existing Asura browse content to the root `/browse` route and remove the header Browse dropdown.
+
+**Changes made**
+- `components/site-header.tsx`: replaced `BrowseNavDropdown` with a direct `Browse` nav link to `/browse`.
+- `app/browse/page.tsx`: added a root browse page that serves the same paginated Asura catalog logic previously used under `/browse/asura-scans`.
+- `README.md`: updated current-scope browse route copy from `/browse/asura-scans` to `/browse`.
+
+**Verification**
+- `npm run lint`
+- `npm run build`
+
+**Next**
+- Optionally redirect `/browse/asura-scans` to `/browse` in a follow-up if canonical URL consolidation is desired.
+
+---
+
 ### 2026-04-17 - Enforce Asura-only UI filters + purge legacy Flame rows
 
 **Objective**

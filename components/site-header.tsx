@@ -1,6 +1,5 @@
 import Link from "next/link";
 import type { SessionUser } from "@/lib/auth/current-user";
-import { BrowseNavDropdown } from "@/components/browse-nav-dropdown";
 import { CloudMark } from "@/components/brand/cloud-mark";
 import { LogoutButton } from "@/components/auth/logout-button";
 import { SiteHeaderSearchShell } from "@/components/site-header-search-shell";
@@ -10,7 +9,7 @@ type SiteHeaderProps = {
 };
 
 /**
- * Top bar: Home, Browse (per-source submenu), Bookmarks, search, and auth (violet accent).
+ * Top bar: Home, Browse, Bookmarks, search, and auth (violet accent).
  */
 export function SiteHeader({ user }: SiteHeaderProps) {
   return (
@@ -34,7 +33,12 @@ export function SiteHeader({ user }: SiteHeaderProps) {
           >
             Home
           </Link>
-          <BrowseNavDropdown />
+          <Link
+            href="/browse"
+            className="rounded-lg px-3 py-2 text-sm font-semibold text-zinc-700 outline-none transition-[opacity,colors,transform] duration-200 ease-out hover:bg-zinc-100/90 hover:text-zinc-900 active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-violet-400/50 focus-visible:ring-offset-2"
+          >
+            Browse
+          </Link>
           <Link
             href="/bookmarks"
             className="rounded-lg px-3 py-2 text-sm font-semibold text-zinc-700 outline-none transition-[opacity,colors,transform] duration-200 ease-out hover:bg-zinc-100/90 hover:text-violet-900 active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-violet-400/50 focus-visible:ring-offset-2"

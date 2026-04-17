@@ -25,7 +25,7 @@ This app provides a clean reading experience with a premium UI while keeping the
 ## Current Scope
 
 - Core reading flow:
-  - Home page with a live “latest updates” panel for Asura (cached ~30 minutes), source shortcuts, and continue-reading when signed in; full per-source grid and pagination at `/browse/asura-scans` (20 series per page; list from the site’s live browse index ~1 hour, merged with curated highlights so delisted titles can still appear)
+  - Home page with a live “latest updates” panel for Asura (cached ~30 minutes), source shortcuts, and continue-reading when signed in; full grid and pagination at `/browse` (20 series per page; Asura list from the site’s live browse index ~1 hour, merged with curated highlights so delisted titles can still appear)
   - Bookmarks page at `/bookmarks` (signed-in); series pages can bookmark the first chapter via `POST /api/bookmarks` (`seriesSlug`, `chapterSlug`, optional `chapterTitle`) and remove with `DELETE /api/bookmarks?id=…`
   - Manhwa detail page with chapter list (opens for any series slug on the live Asura browse index or curated highlights, without a `Follow` row; follows still preferred for library metadata)
   - Chapter reader page with vertical page images (adapter URLs), resume scroll, prev/next chapter links, and server-persisted page progress (`ReadingHistory` for the signed-in user); add `?start=1` on a chapter URL to reopen from page 1

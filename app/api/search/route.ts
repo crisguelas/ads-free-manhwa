@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
+import { isBrowseSourceKey } from "@/lib/browse-constants";
+import { buildLiveBrowseCatalogForSource } from "@/lib/live-source-browse";
 import { prisma } from "@/lib/prisma";
 import { CATALOG_HIGHLIGHTS } from "@/lib/featured-series";
 import { SUPPORTED_SOURCE_KEYS } from "@/lib/supported-sources";
 
 /**
- * Returns merged catalog + `SeriesCache` matches for the header search dropdown (title or slug substring).
+ * Returns merged DB cache, static highlights, and live browse catalog matches for the header search (title or slug substring).
  */
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -75,6 +77,31 @@ export async function GET(request: Request) {
           sourceName: h.sourceName,
           sourceKey: h.sourceKey,
         });
+      }
+    }
+
+    // 4. Live browse catalog (same `unstable_cache` as `/browse` and home “latest”) so series visible there are searchable even when `SeriesCache` is empty.
+    for (const sourceKey of SUPPORTED_SOURCE_KEYS) {
+      if (!isBrowseSourceKey(sourceKey)) {
+        continue;
+      }
+      const liveCatalog = await buildLiveBrowseCatalogForSource(sourceKey);
+      for (const h of liveCatalog) {
+        const titleMatch = h.title.toLowerCase().includes(query);
+        const slugMatch = h.seriesSlug.toLowerCase().includes(query);
+        if (!titleMatch && !slugMatch) {
+          continue;
+        }
+        const key = `${h.sourceKey}:${h.seriesSlug}`;
+        if (!merged.has(key)) {
+          merged.set(key, {
+            title: h.title,
+            slug: h.seriesSlug,
+            coverImageUrl: h.coverImageUrl,
+            sourceName: h.sourceName,
+            sourceKey: h.sourceKey,
+          });
+        }
       }
     }
 

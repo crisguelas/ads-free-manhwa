@@ -10,6 +10,23 @@ This file tracks implementation steps so future developers can understand what w
 
 ## Timeline
 
+### 2026-04-17 - Search API: include live Asura browse catalog
+
+**Objective**
+- Make header search find the same series users see on Latest Updates / browse, not only `SeriesCache` + static `CATALOG_HIGHLIGHTS`.
+
+**Changes made**
+- `app/api/search/route.ts`: after DB + static matches, merge hits from `buildLiveBrowseCatalogForSource` (same cached live scrape as `/browse`) filtered by title or slug substring.
+
+**Verification**
+- `npm run lint`
+- `npm run build`
+
+**Next**
+- If search latency becomes noticeable at scale, add a dedicated cached search index or prefix map instead of scanning the merged catalog per request.
+
+---
+
 ### 2026-04-17 - Header search dropdown: fix results flashing closed
 
 **Objective**

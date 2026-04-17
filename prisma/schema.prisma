@@ -12,31 +12,6 @@ datasource db {
   provider = "postgresql"
 }
 
-model User {
-  id                   String               @id @default(cuid())
-  email                String               @unique
-  passwordHash         String
-  displayName          String?
-  createdAt            DateTime             @default(now())
-  updatedAt            DateTime             @updatedAt
-  bookmarks            Bookmark[]
-  follows              Follow[]
-  readingHistory       ReadingHistory[]
-  passwordResetTokens  PasswordResetToken[]
-}
-
-model PasswordResetToken {
-  id        String    @id @default(cuid())
-  userId    String
-  tokenHash String    @unique
-  expiresAt DateTime
-  usedAt    DateTime?
-  createdAt DateTime  @default(now())
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-}
-
 model Source {
   id             String           @id @default(cuid())
   key            String           @unique
@@ -45,16 +20,13 @@ model Source {
   isEnabled      Boolean          @default(true)
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
-  bookmarks      Bookmark[]
   follows        Follow[]
-  readingHistory ReadingHistory[]
   seriesCache    SeriesCache[]
   chapterCache   ChapterCache[]
 }
 
 model Follow {
   id            String   @id @default(cuid())
-  userId        String
   sourceId      String
   seriesSlug    String
   seriesTitle   String
@@ -62,46 +34,9 @@ model Follow {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   source        Source   @relation(fields: [sourceId], references: [id], onDelete: Cascade)
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, sourceId, seriesSlug])
+  @@unique([sourceId, seriesSlug])
   @@index([sourceId, seriesSlug])
-}
-
-model Bookmark {
-  id             String   @id @default(cuid())
-  userId         String
-  sourceId       String
-  seriesSlug     String
-  chapterSlug    String
-  chapterTitle   String?
-  pageNumber     Int?
-  chapterUrl     String?
-  bookmarkedAt   DateTime @default(now())
-  lastAccessedAt DateTime @updatedAt
-  source         Source   @relation(fields: [sourceId], references: [id], onDelete: Cascade)
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, sourceId, seriesSlug, chapterSlug])
-  @@index([sourceId, seriesSlug, chapterSlug])
-}
-
-model ReadingHistory {
-  id           String   @id @default(cuid())
-  userId       String
-  sourceId     String
-  seriesSlug   String
-  chapterSlug  String
-  chapterTitle String?
-  chapterUrl   String?
-  pageNumber   Int?
-  lastReadAt   DateTime @default(now())
-  source       Source   @relation(fields: [sourceId], references: [id], onDelete: Cascade)
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, sourceId, seriesSlug, chapterSlug])
-  @@index([userId, lastReadAt])
-  @@index([sourceId, seriesSlug, chapterSlug])
 }
 
 model SeriesCache {

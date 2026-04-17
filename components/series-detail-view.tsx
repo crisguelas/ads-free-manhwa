@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { SeriesDetailData, SeriesReaderStatus } from "@/lib/reader-data";
 import { RemoteCoverImage } from "@/components/remote-cover-image";
 
@@ -63,14 +63,12 @@ function formatListDate(iso: string | null): string {
 }
 
 /**
- * Client shell for the series page: synopsis, bookmark / first / latest actions, searchable chapter list.
+ * Client shell for the series page: synopsis, first/latest actions, and searchable chapter list.
  */
 export function SeriesDetailView({ data }: SeriesDetailViewProps) {
   const [expandedSynopsis, setExpandedSynopsis] = useState(false);
   const [query, setQuery] = useState("");
   const [newestFirst, setNewestFirst] = useState(true);
-  const [bookmarkId, setBookmarkId] = useState<string | null>(data.bookmarkIdForFirstChapter);
-  const [bookmarkBusy, setBookmarkBusy] = useState(false);
 
   const synopsis = data.synopsis?.trim() || null;
   const synopsisLong = synopsis && synopsis.length > SYNOPSIS_COLLAPSE_CHARS;
@@ -98,39 +96,6 @@ export function SeriesDetailView({ data }: SeriesDetailViewProps) {
     data.latestChapterSlug != null
       ? `/manhwa/${encodeURIComponent(data.seriesSlug)}/chapter/${encodeURIComponent(data.latestChapterSlug)}`
       : null;
-
-  const toggleBookmark = useCallback(async () => {
-    if (!data.firstChapterSlug || bookmarkBusy) {
-      return;
-    }
-    setBookmarkBusy(true);
-    try {
-      if (bookmarkId) {
-        const res = await fetch(`/api/bookmarks?id=${encodeURIComponent(bookmarkId)}`, {
-          method: "DELETE",
-        });
-        if (res.ok) {
-          setBookmarkId(null);
-        }
-      } else {
-        const res = await fetch("/api/bookmarks", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            seriesSlug: data.seriesSlug,
-            chapterSlug: data.firstChapterSlug,
-            chapterTitle: data.firstChapterTitle,
-          }),
-        });
-        const json = (await res.json()) as { bookmarkId?: string };
-        if (res.ok && json.bookmarkId) {
-          setBookmarkId(json.bookmarkId);
-        }
-      }
-    } finally {
-      setBookmarkBusy(false);
-    }
-  }, [bookmarkBusy, bookmarkId, data.firstChapterSlug, data.firstChapterTitle, data.seriesSlug]);
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 py-8 sm:px-6 sm:py-10">
@@ -181,21 +146,6 @@ export function SeriesDetailView({ data }: SeriesDetailViewProps) {
           )}
 
           <div className="mt-6 flex flex-col gap-2.5 sm:flex-row sm:flex-wrap">
-            <button
-              type="button"
-              disabled={!data.firstChapterSlug || bookmarkBusy}
-              onClick={() => void toggleBookmark()}
-              className={`inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold shadow-sm transition duration-200 disabled:cursor-not-allowed disabled:opacity-50 ${
-                bookmarkId
-                  ? "border border-violet-300 bg-violet-50 text-violet-900 hover:bg-violet-100"
-                  : "bg-violet-600 text-white hover:bg-violet-700"
-              }`}
-            >
-              <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden>
-                <path d="M6 4a2 2 0 012-2h8a2 2 0 012 2v16l-6-3.5L6 20V4z" />
-              </svg>
-              {bookmarkId ? "Bookmarked" : "Bookmark"}
-            </button>
             {firstHref ? (
               <Link
                 href={firstHref}
@@ -301,26 +251,6 @@ export function SeriesDetailView({ data }: SeriesDetailViewProps) {
           )}
         </ul>
       </section>
-
-      {data.bookmarks.length > 0 && (
-        <div className="mt-10 grid items-start gap-6 sm:grid-cols-2">
-          <section className="rounded-2xl border border-zinc-200/90 bg-white p-5 shadow-sm">
-            <h2 className="text-sm font-bold text-zinc-900">Your bookmarks</h2>
-            <ul className="mt-3 space-y-2 text-sm">
-              {data.bookmarks.slice(0, 6).map((b) => (
-                <li key={b.id}>
-                  <Link
-                    href={`/manhwa/${encodeURIComponent(data.seriesSlug)}/chapter/${encodeURIComponent(b.chapterSlug)}`}
-                    className="font-medium text-violet-700 hover:underline"
-                  >
-                    {b.chapterTitle ?? b.chapterSlug}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </section>
-        </div>
-      )}
     </div>
   );
 }

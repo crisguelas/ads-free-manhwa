@@ -1,17 +1,11 @@
 import Link from "next/link";
-import type { SessionUser } from "@/lib/auth/current-user";
 import { CloudMark } from "@/components/brand/cloud-mark";
-import { LogoutButton } from "@/components/auth/logout-button";
 import { SiteHeaderSearchShell } from "@/components/site-header-search-shell";
 
-type SiteHeaderProps = {
-  user: SessionUser | null;
-};
-
 /**
- * Top bar: Home, Browse, Bookmarks, search, and auth (violet accent).
+ * Top bar: Home, Browse, and search (violet accent).
  */
-export function SiteHeader({ user }: SiteHeaderProps) {
+export function SiteHeader() {
   return (
     <header className="sticky top-0 z-50 shrink-0 border-b border-zinc-200/90 bg-white/95 shadow-[0_1px_0_rgba(0,0,0,0.04)] backdrop-blur-md backdrop-saturate-150">
       <div className="h-1 w-full bg-gradient-to-r from-violet-600 via-violet-500 to-amber-400" aria-hidden />
@@ -39,37 +33,10 @@ export function SiteHeader({ user }: SiteHeaderProps) {
           >
             Browse
           </Link>
-          <Link
-            href="/bookmarks"
-            className="rounded-lg px-3 py-2 text-sm font-semibold text-zinc-700 outline-none transition-[opacity,colors,transform] duration-200 ease-out hover:bg-zinc-100/90 hover:text-violet-900 active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-violet-400/50 focus-visible:ring-offset-2"
-          >
-            Bookmarks
-          </Link>
         </nav>
 
         <div className="ml-auto flex flex-1 items-center justify-end gap-2 sm:flex-initial md:flex-1 lg:max-w-md">
           <SiteHeaderSearchShell />
-          {user ? (
-            <>
-              <span className="hidden max-w-[10rem] truncate text-xs text-zinc-500 xl:inline">{user.email}</span>
-              <LogoutButton />
-            </>
-          ) : (
-            <>
-              <Link
-                href="/login"
-                className="rounded-full px-3 py-2 text-sm font-semibold text-zinc-700 outline-none transition-[opacity,colors,transform,box-shadow] duration-200 ease-out hover:bg-zinc-100/90 hover:text-zinc-900 active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-violet-400/50 focus-visible:ring-offset-2"
-              >
-                Log in
-              </Link>
-              <Link
-                href="/register"
-                className="rounded-full bg-violet-600 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-violet-600/20 outline-none transition-[opacity,colors,transform,box-shadow] duration-200 ease-out hover:bg-violet-700 hover:shadow-md active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-violet-400/80 focus-visible:ring-offset-2"
-              >
-                Register
-              </Link>
-            </>
-          )}
         </div>
       </div>
     </header>

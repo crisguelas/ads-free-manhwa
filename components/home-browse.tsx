@@ -38,7 +38,7 @@ export function HomeBrowse({ data }: HomeBrowseProps) {
               title="Latest Updates"
               description=""
               items={data.latestAsura}
-              viewAllHref="/browse/asura-scans"
+              viewAllHref="/browse"
               viewAllLabel="Browse all Asura series"
               accentClass="border-l-4 border-l-violet-600"
             />

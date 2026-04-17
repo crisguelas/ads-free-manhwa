@@ -1,4 +1,3 @@
-import { getSessionUser } from "@/lib/auth/current-user";
 import { pickRowWhenSeriesSlugSpansScanSources } from "@/lib/follow-source-disambiguation";
 import { displayFollowSeriesTitle } from "@/lib/follow-series-title";
 import { decodeBasicHtmlEntities } from "@/lib/html-entities";
@@ -76,7 +75,7 @@ function adjacentChapterSlugs(
 }
 
 /**
- * Series + source identity for reader routes: from the user’s library follow, or from the home catalog + `Source` row.
+ * Series + source identity for reader routes: from follow rows, cache, or live browse + `Source` row.
  */
 type ResolvedSeriesContext = {
   seriesSlug: string;
@@ -90,17 +89,15 @@ type ResolvedSeriesContext = {
 };
 
 /**
- * Resolves which source and title apply to `seriesSlug` for this user (also used by bookmark API).
+ * Resolves which source and title apply to `seriesSlug`.
  * Prefer an explicit `Follow`; otherwise curated highlights; otherwise any slug present on the live browse index.
  */
 export async function resolveSeriesContextForUser(
   seriesSlug: string,
-  userId: string,
 ): Promise<ResolvedSeriesContext | null> {
   const followRows = await prisma.follow.findMany({
     where: {
       seriesSlug: { equals: seriesSlug, mode: "insensitive" },
-      userId,
       source: {
         key: {
           in: [...SUPPORTED_SOURCE_KEYS],
@@ -278,25 +275,11 @@ export type SeriesDetailData = {
   latestChapterTitle: string | null;
   firstChapterSlug: string | null;
   firstChapterTitle: string | null;
-  /** Bookmark row id when the first chapter is bookmarked (for toggle UI). */
-  bookmarkIdForFirstChapter: string | null;
   liveChapters: Array<{
     slug: string;
     title: string;
     url: string;
     publishedAt: string | null;
-  }>;
-  bookmarks: Array<{
-    id: string;
-    chapterSlug: string;
-    chapterTitle: string | null;
-    pageNumber: number | null;
-  }>;
-  recentReads: Array<{
-    id: string;
-    chapterSlug: string;
-    chapterTitle: string | null;
-    pageNumber: number | null;
   }>;
   /** Publication status for hero overlay (same normalization as the chapter reader). */
   seriesStatus: SeriesReaderStatus;
@@ -337,24 +320,18 @@ export function formatSeriesStatusForReader(
  */
 export type ChapterReaderData = {
   seriesSlug: string;
+  seriesTitle: string;
   chapterSlug: string;
   chapterTitle: string;
   chapterUrl: string | null;
   sourceKey: string;
   sourceName: string;
+  coverImageUrl: string | null;
   pageNumber: number;
   previousChapterSlug: string | null;
   nextChapterSlug: string | null;
   imageUrls: string[];
   seriesStatus: SeriesReaderStatus;
-};
-
-/**
- * Options for opening a chapter in the reader (e.g. ignore saved scroll position).
- */
-export type ChapterReaderOptions = {
-  /** When true, open at page 1 and skip `ReadingHistory` pageNumber for this visit. */
-  fromStart?: boolean;
 };
 
 /**
@@ -481,22 +458,15 @@ async function syncAdapterChaptersToCache(params: {
 export async function getSeriesDetailData(
   seriesSlug: string,
 ): Promise<SeriesDetailData | null> {
-  const user = await getSessionUser();
-  if (!user) {
-    return null;
-  }
-
-  const resolved = await resolveSeriesContextForUser(seriesSlug, user.id);
+  const resolved = await resolveSeriesContextForUser(seriesSlug);
   if (!resolved) {
     return null;
   }
 
   const adapter = getSourceAdapter(resolved.sourceKey);
 
-  const userScope = { userId: user.id };
-
   // Fetch DB data and series page meta in parallel — avoids two sequential async round-trips later.
-  const [cachedChapters, bookmarks, recentReads, seriesCacheRow, prefetchedMeta] = await Promise.all([
+  const [cachedChapters, seriesCacheRow, prefetchedMeta] = await Promise.all([
     prisma.chapterCache.findMany({
       where: {
         sourceId: resolved.sourceId,
@@ -509,36 +479,6 @@ export async function getSeriesDetailData(
         chapterUrl: true,
         lastSyncedAt: true,
         publishedAt: true,
-      },
-    }),
-    prisma.bookmark.findMany({
-      where: {
-        sourceId: resolved.sourceId,
-        seriesSlug,
-        ...userScope,
-      },
-      orderBy: { bookmarkedAt: "desc" },
-      take: 20,
-      select: {
-        id: true,
-        chapterSlug: true,
-        chapterTitle: true,
-        pageNumber: true,
-      },
-    }),
-    prisma.readingHistory.findMany({
-      where: {
-        sourceId: resolved.sourceId,
-        seriesSlug,
-        ...userScope,
-      },
-      orderBy: { lastReadAt: "desc" },
-      take: 20,
-      select: {
-        id: true,
-        chapterSlug: true,
-        chapterTitle: true,
-        pageNumber: true,
       },
     }),
     prisma.seriesCache.findUnique({
@@ -604,9 +544,6 @@ export async function getSeriesDetailData(
   const liveChapters = sortLiveChaptersReadingOrder(rawLiveChapters);
   const newestChapter = liveChapters[liveChapters.length - 1];
   const firstChapter = liveChapters[0];
-  const bookmarkOnFirst = firstChapter
-    ? bookmarks.find((b) => b.chapterSlug === firstChapter.slug)
-    : undefined;
 
   // Use the pre-fetched meta (already running in parallel above) for synopsis and status.
   let synopsis = seriesCacheRow?.synopsis?.trim() || null;
@@ -650,15 +587,12 @@ export async function getSeriesDetailData(
     latestChapterTitle: newestChapter?.title ?? null,
     firstChapterSlug: firstChapter?.slug ?? null,
     firstChapterTitle: firstChapter?.title ?? null,
-    bookmarkIdForFirstChapter: bookmarkOnFirst?.id ?? null,
     liveChapters: liveChapters.map((c) => ({
       slug: c.slug,
       title: c.title,
       url: c.url,
       publishedAt: c.publishedAt ? c.publishedAt.toISOString() : null,
     })),
-    bookmarks,
-    recentReads,
     seriesStatus,
   };
 }
@@ -669,122 +603,57 @@ export async function getSeriesDetailData(
 export async function getChapterReaderData(
   seriesSlug: string,
   chapterSlug: string,
-  options?: ChapterReaderOptions,
 ): Promise<ChapterReaderData | null> {
-  const user = await getSessionUser();
-  if (!user) {
+  const resolved = await resolveSeriesContextForUser(seriesSlug);
+  if (!resolved) {
     return null;
   }
 
-  const skipSavedProgress = options?.fromStart === true;
-
-  const history = skipSavedProgress
-    ? null
-    : await prisma.readingHistory.findFirst({
-        where: {
-          seriesSlug,
-          chapterSlug,
-          userId: user.id,
-        },
-        orderBy: { lastReadAt: "desc" },
-        select: {
-          chapterSlug: true,
-          chapterTitle: true,
-          chapterUrl: true,
-          pageNumber: true,
-          source: {
-            select: {
-              id: true,
-              key: true,
-              name: true,
-            },
-          },
-        },
-      });
-
-  if (!history) {
-    const resolved = await resolveSeriesContextForUser(seriesSlug, user.id);
-    if (!resolved) {
-      return null;
-    }
-
-    const adapter = getSourceAdapter(resolved.sourceKey);
-    if (!adapter) {
-      return null;
-    }
-
-    const [chapterDetail, chapterList, cachedChapter] = await Promise.all([
-      adapter.getChapterDetail(seriesSlug, chapterSlug),
-      adapter.listSeriesChapters(seriesSlug),
-      prisma.chapterCache.findFirst({
-        where: {
-          sourceId: resolved.sourceId,
-          seriesSlug,
-          chapterSlug,
-        },
-        select: {
-          title: true,
-          chapterUrl: true,
-        },
-      }),
-    ]);
-    if (!chapterDetail && !cachedChapter) {
-      return null;
-    }
-    const { previousChapterSlug, nextChapterSlug } = adjacentChapterSlugs(
-      chapterList,
-      chapterSlug,
-    );
-
-    const seriesStatus = await resolveSeriesStatusForReader(
-      resolved.sourceId,
-      resolved.sourceKey,
-      seriesSlug,
-    );
-
-    return {
-      seriesSlug,
-      chapterSlug,
-      chapterTitle:
-        chapterDetail?.title ?? cachedChapter?.title ?? `Chapter ${chapterSlug}`,
-      chapterUrl: chapterDetail?.url ?? cachedChapter?.chapterUrl ?? null,
-      sourceKey: resolved.sourceKey,
-      sourceName: resolved.sourceName,
-      pageNumber: 1,
-      previousChapterSlug,
-      nextChapterSlug,
-      imageUrls: chapterDetail?.imageUrls ?? [],
-      seriesStatus,
-    };
+  const adapter = getSourceAdapter(resolved.sourceKey);
+  if (!adapter) {
+    return null;
   }
 
-  const adapter = getSourceAdapter(history.source.key);
-
-  const [chapterDetail, chapterList] = await Promise.all([
-    adapter?.getChapterDetail(seriesSlug, chapterSlug) ?? Promise.resolve(null),
-    adapter?.listSeriesChapters(seriesSlug) ?? Promise.resolve([]),
+  const [chapterDetail, chapterList, cachedChapter] = await Promise.all([
+    adapter.getChapterDetail(seriesSlug, chapterSlug),
+    adapter.listSeriesChapters(seriesSlug),
+    prisma.chapterCache.findFirst({
+      where: {
+        sourceId: resolved.sourceId,
+        seriesSlug,
+        chapterSlug,
+      },
+      select: {
+        title: true,
+        chapterUrl: true,
+      },
+    }),
   ]);
-
+  if (!chapterDetail && !cachedChapter) {
+    return null;
+  }
   const { previousChapterSlug, nextChapterSlug } = adjacentChapterSlugs(
     chapterList,
     chapterSlug,
   );
 
   const seriesStatus = await resolveSeriesStatusForReader(
-    history.source.id,
-    history.source.key,
+    resolved.sourceId,
+    resolved.sourceKey,
     seriesSlug,
   );
 
   return {
     seriesSlug,
+    seriesTitle: resolved.seriesTitle,
     chapterSlug,
     chapterTitle:
-      chapterDetail?.title ?? history.chapterTitle ?? chapterSlug,
-    chapterUrl: chapterDetail?.url ?? history.chapterUrl ?? null,
-    sourceKey: history.source.key,
-    sourceName: history.source.name,
-    pageNumber: history.pageNumber ?? 1,
+      chapterDetail?.title ?? cachedChapter?.title ?? `Chapter ${chapterSlug}`,
+    chapterUrl: chapterDetail?.url ?? cachedChapter?.chapterUrl ?? null,
+    sourceKey: resolved.sourceKey,
+    sourceName: resolved.sourceName,
+    coverImageUrl: resolved.coverImageUrl,
+    pageNumber: 1,
     previousChapterSlug,
     nextChapterSlug,
     imageUrls: chapterDetail?.imageUrls ?? [],

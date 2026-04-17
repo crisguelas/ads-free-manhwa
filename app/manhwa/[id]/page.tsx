@@ -1,7 +1,6 @@
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { PageSurface } from "@/components/layout/page-surface";
 import { SeriesDetailView } from "@/components/series-detail-view";
-import { getSessionUser } from "@/lib/auth/current-user";
 import { getSeriesDetailData } from "@/lib/reader-data";
 
 /**
@@ -18,11 +17,6 @@ type SeriesDetailPageProps = {
  */
 export default async function SeriesDetailPage({ params }: SeriesDetailPageProps) {
   const { id } = await params;
-  const user = await getSessionUser();
-  if (!user) {
-    redirect(`/login?next=${encodeURIComponent(`/manhwa/${id}`)}`);
-  }
-
   const data = await getSeriesDetailData(id);
 
   if (!data) {

@@ -19,7 +19,7 @@ const OFFLINE_SOURCES: HomePageData["sources"] = [
 ];
 
 /**
- * Resume row for signed-in users (cover from the user's follow row when set).
+ * Resume row for browser-cached continue-reading entries.
  */
 export type ContinueReadingCard = {
   id: string;
@@ -45,12 +45,10 @@ export type HomePageData = {
     baseUrl: string;
     isEnabled: boolean;
   }>;
-  /** False when Prisma failed (network/TLS/etc.); signed-in lists may be empty despite a valid session. */
+  /** False when Prisma failed (network/TLS/etc.); browse source metadata may be incomplete. */
   dbOk: boolean;
-  recentReads: ContinueReadingCard[];
   /** Live Asura browse (first page order), cover-enriched when possible. */
   latestAsura: CatalogHighlight[];
-  currentUserEmail: string | null;
 };
 
 // `attachFollowCoversToRecentReads` function removed along with its dependencies
@@ -81,9 +79,7 @@ export async function getHomePageData(): Promise<HomePageData> {
     return {
       sources,
       dbOk: true,
-      recentReads: [], // Moved to client-side API
       latestAsura,
-      currentUserEmail: null, // Moved to client-side API
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -91,9 +87,7 @@ export async function getHomePageData(): Promise<HomePageData> {
     return {
       sources: OFFLINE_SOURCES,
       dbOk: false,
-      recentReads: [],
       latestAsura,
-      currentUserEmail: null,
     };
   }
 }

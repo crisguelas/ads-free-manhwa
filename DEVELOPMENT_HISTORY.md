@@ -10,6 +10,84 @@ This file tracks implementation steps so future developers can understand what w
 
 ## Timeline
 
+### 2026-04-17 - Remove bookmarks and switch continue-reading to browser cache
+
+**Objective**
+- Remove the bookmark system entirely and make continue-reading rely on browser-local cache instead of database APIs.
+
+**Changes made**
+- Removed bookmark and progress server features:
+  - deleted `app/bookmarks/page.tsx`, `app/api/bookmarks/route.ts`, `app/api/reading-progress/route.ts`, `app/api/personal/home/route.ts`
+  - deleted `lib/bookmark-api.ts`, `lib/bookmarks-page-data.ts`, `lib/reading-progress.ts`, `lib/reading-progress.test.ts`
+  - deleted bookmark UI components `components/bookmark-list-client.tsx` and `components/bookmark-list-row.tsx`
+- Updated navigation and detail UI:
+  - removed Bookmarks links from `components/site-header.tsx` and `components/site-footer.tsx`
+  - removed bookmark actions/sections from `components/series-detail-view.tsx`
+- Added browser-local continue-reading cache:
+  - new `lib/browser-continue-reading.ts` for localStorage read/write/upsert helpers
+  - `components/chapter-reader-view.tsx` now writes progress to localStorage (debounced + `pagehide` / `visibilitychange`)
+  - `components/client-continue-reading.tsx` now reads localStorage directly (no API call)
+  - `lib/reader-data.ts` and `app/manhwa/[id]/chapter/[cid]/page.tsx` updated to provide local cache metadata (series/source/cover) to the reader client
+- Updated database schema and migrations:
+  - removed `Bookmark` and `ReadingHistory` models from `prisma/schema.prisma`
+  - updated seed to stop writing bookmark/history rows (`prisma/seed.ts`)
+  - added and applied migration `prisma/migrations/20260417170000_remove_bookmark_and_reading_history/migration.sql`
+- Updated docs/tooling:
+  - `README.md` now documents browser-cached continue-reading and no bookmarks
+  - `package.json` test command no longer references removed reading-progress test
+
+**Verification**
+- `npx prisma generate`
+- `npx prisma migrate deploy`
+- `npm install`
+- `npm run lint`
+- `npm run build`
+
+**Next**
+- Optional: add a manual “Clear continue reading” control on home for local cache management.
+
+---
+
+### 2026-04-17 - Remove login system and user-bound auth data
+
+**Objective**
+- Remove login/registration/password-reset flows and make reading, bookmarks, and progress available without authentication.
+
+**Changes made**
+- Removed auth UI/routes/modules:
+  - deleted `app/login`, `app/register`, `app/forgot-password`, `app/reset-password`
+  - deleted `app/api/auth/*`
+  - deleted `components/auth/*` and `lib/auth/*`
+- Updated app shell and route guards:
+  - `app/layout.tsx`, `components/site-header.tsx`, `components/site-footer.tsx`, and manhwa pages no longer read session state or redirect to login.
+- Reworked bookmark/progress/persona APIs to unauthenticated global behavior:
+  - `app/api/bookmarks/route.ts`, `lib/bookmark-api.ts`
+  - `app/api/reading-progress/route.ts`, `lib/reading-progress.ts`
+  - `app/api/personal/home/route.ts`, `components/client-continue-reading.tsx`
+  - `lib/reader-data.ts`, `lib/bookmarks-page-data.ts`, `app/bookmarks/page.tsx`
+- Updated Prisma schema and migration:
+  - removed `User` and `PasswordResetToken` models
+  - removed `userId` from `Follow`, `Bookmark`, and `ReadingHistory`
+  - added migration `prisma/migrations/20260417160000_remove_auth_system/migration.sql` with dedupe before new unique indexes
+  - applied migration via `prisma migrate deploy` after resolving failed non-interactive `migrate dev` attempts
+- Updated docs/tooling:
+  - `README.md` auth/password-reset references removed from active setup/scope
+  - `package.json` test list and dependencies updated (`bcryptjs`/`jose` removed)
+
+**Verification**
+- `npm install`
+- `npx prisma generate`
+- `npx prisma migrate dev --name remove_auth_system` (fails in non-interactive shell; expected)
+- `npx prisma migrate resolve --rolled-back 20260417160000_remove_auth_system`
+- `npx prisma migrate deploy`
+- `npm run lint`
+- `npm run build`
+
+**Next**
+- Optionally redesign `/api/personal/home` response shape to drop legacy `authenticated/currentUserEmail` fields now that auth is removed.
+
+---
+
 ### 2026-04-17 - Browse route simplification (Asura content at `/browse`)
 
 **Objective**

@@ -1,7 +1,5 @@
-import Link from "next/link";
 import type { HomePageData } from "@/lib/home-data";
-import { displaySeriesTitleForContinueCard } from "@/lib/continue-reading-display";
-import { cardElevated, textLink } from "@/lib/ui-styles";
+import { cardElevated } from "@/lib/ui-styles";
 
 /**
  * Defines props for the source overview home sections.
@@ -20,7 +18,7 @@ const listRow =
  */
 export function SourceOverview({ data }: SourceOverviewProps) {
   return (
-    <div className="grid gap-6 md:grid-cols-2">
+    <div className="grid gap-6">
       <section className={`${cardElevated} flex flex-col`}>
         <div>
           <p className={sectionEyebrow}>Sources</p>
@@ -45,73 +43,6 @@ export function SourceOverview({ data }: SourceOverviewProps) {
               </span>
             </li>
           ))}
-        </ul>
-      </section>
-
-      <section className={`${cardElevated} flex flex-col`}>
-        <div>
-          <p className={sectionEyebrow}>Saved</p>
-          <h2 className={sectionTitle}>Bookmarks</h2>
-          <p className="mt-1 text-sm text-zinc-500">Chapters you bookmark in the reader appear on the Bookmarks page.</p>
-        </div>
-        <ul className="mt-5 space-y-2">
-          <li className="rounded-xl border border-dashed border-zinc-200 bg-zinc-50/30 px-3.5 py-4 text-sm leading-relaxed text-zinc-600">
-            <Link href="/bookmarks" className={textLink}>
-              Open bookmarks
-            </Link>
-            {data.currentUserEmail === null ? (
-              <>
-                {" "}
-                —{" "}
-                <Link href="/login" className={textLink}>
-                  sign in
-                </Link>{" "}
-                first.
-              </>
-            ) : null}
-          </li>
-        </ul>
-      </section>
-
-      <section className={`${cardElevated} md:col-span-2`}>
-        <div>
-          <p className={sectionEyebrow}>Activity</p>
-          <h2 className={sectionTitle}>Recent reads</h2>
-          <p className="mt-1 text-sm text-zinc-500">Jump back into the last chapters you opened.</p>
-        </div>
-        <ul className="mt-5 space-y-2">
-          {data.currentUserEmail === null ? (
-            <li className="rounded-xl border border-dashed border-zinc-200 bg-zinc-50/30 px-3.5 py-4 text-sm text-zinc-600">
-              Sign in to track recent chapters and resume reading.
-            </li>
-          ) : data.recentReads.length === 0 ? (
-            <li className="rounded-xl border border-dashed border-zinc-200 bg-zinc-50/30 px-3.5 py-4 text-sm text-zinc-500">
-              No reading history yet. Open a chapter to see it listed here.
-            </li>
-          ) : (
-            data.recentReads.map((entry) => {
-              const seriesLine = displaySeriesTitleForContinueCard(
-                entry.seriesTitle,
-                entry.sourceKey,
-                entry.seriesSlug,
-              );
-              return (
-                <li key={entry.id} className={listRow}>
-                  <div className="min-w-0">
-                    <Link
-                      className="block truncate font-medium text-zinc-900 transition hover:text-indigo-700"
-                      href={`/manhwa/${entry.seriesSlug}/chapter/${entry.chapterSlug}`}
-                    >
-                      {seriesLine}
-                    </Link>
-                    <p className="truncate text-xs text-zinc-500">
-                      {entry.sourceName} · {entry.chapterTitle ?? entry.chapterSlug}
-                    </p>
-                  </div>
-                </li>
-              );
-            })
-          )}
         </ul>
       </section>
     </div>

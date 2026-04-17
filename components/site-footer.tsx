@@ -18,12 +18,6 @@ export function SiteFooter() {
               Home
             </Link>
 
-            <Link href="/bookmarks" className="transition hover:text-violet-700">
-              Bookmarks
-            </Link>
-            <Link href="/login" className="transition hover:text-violet-700">
-              Sign in
-            </Link>
           </nav>
           <p className="text-xs text-zinc-400">© {new Date().getFullYear()} Manhwa Cloud</p>
         </div>

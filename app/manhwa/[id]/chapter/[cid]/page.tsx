@@ -1,7 +1,6 @@
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { ChapterReaderView } from "@/components/chapter-reader-view";
-import { getSessionUser } from "@/lib/auth/current-user";
 import { type SeriesReaderStatus, getChapterReaderData } from "@/lib/reader-data";
 
 /**
@@ -43,15 +42,8 @@ export default async function ChapterReaderPage({
   const { id, cid } = await params;
   const sp = searchParams ? await searchParams : {};
   const fromStart = sp.start === "1" || sp.start === "true";
-  const user = await getSessionUser();
-  if (!user) {
-    const q = fromStart ? "?start=1" : "";
-    redirect(
-      `/login?next=${encodeURIComponent(`/manhwa/${id}/chapter/${cid}${q}`)}`,
-    );
-  }
 
-  const data = await getChapterReaderData(id, cid, { fromStart });
+  const data = await getChapterReaderData(id, cid);
 
   if (!data) {
     notFound();
@@ -105,10 +97,13 @@ export default async function ChapterReaderPage({
           chapterUrl={data.chapterUrl}
           progressSync={{
             sourceKey: data.sourceKey,
+            sourceName: data.sourceName,
             seriesSlug: data.seriesSlug,
+            seriesTitle: data.seriesTitle,
             chapterSlug: data.chapterSlug,
             chapterTitle: data.chapterTitle,
             chapterUrl: data.chapterUrl,
+            coverImageUrl: data.coverImageUrl,
           }}
           previousChapterHref={
             data.previousChapterSlug

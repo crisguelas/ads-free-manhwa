@@ -25,11 +25,9 @@ This app provides a clean reading experience with a premium UI while keeping the
 ## Current Scope
 
 - Core reading flow:
-  - Home page with a live “latest updates” panel for Asura (cached ~30 minutes), source shortcuts, and continue-reading when signed in; full grid and pagination at `/browse` (20 series per page; Asura list from the site’s live browse index ~1 hour, merged with curated highlights so delisted titles can still appear)
-  - Bookmarks page at `/bookmarks` (signed-in); series pages can bookmark the first chapter via `POST /api/bookmarks` (`seriesSlug`, `chapterSlug`, optional `chapterTitle`) and remove with `DELETE /api/bookmarks?id=…`
-  - Manhwa detail page with chapter list (opens for any series slug on the live Asura browse index or curated highlights, without a `Follow` row; follows still preferred for library metadata)
-  - Chapter reader page with vertical page images (adapter URLs), resume scroll, prev/next chapter links, and server-persisted page progress (`ReadingHistory` for the signed-in user); add `?start=1` on a chapter URL to reopen from page 1
-  - Email + password accounts with HttpOnly session cookie (`AUTH_SECRET`); library, history, and reader routes require login
+  - Home page with a live “latest updates” panel for Asura (cached ~30 minutes), source shortcuts, and browser-cached continue-reading; full grid and pagination at `/browse` (20 series per page; Asura list from the site’s live browse index ~1 hour, merged with curated highlights so delisted titles can still appear)
+  - Manhwa detail page with chapter list (opens for any series slug on the live Asura browse index or curated highlights, without a `Follow` row; follows still preferred for metadata)
+  - Chapter reader page with vertical page images (adapter URLs), resume scroll, prev/next chapter links, and browser-local progress cache; add `?start=1` on a chapter URL to reopen from page 1
 - Home catalog covers: `lib/catalog-covers.ts` prefers live `og:image` from Asura series pages (cached); `lib/featured-series.ts` holds fallbacks; `RemoteCoverImage` swaps broken URLs for a placeholder. Continue reading uses the same `resolveSeriesCoverUrl` path when the user has no matching library row or `Follow.coverImageUrl` is empty.
 - Scraper-first data strategy:
   - Fetch chapter/page content from scanlation sources at runtime
@@ -39,10 +37,7 @@ This app provides a clean reading experience with a premium UI while keeping the
   - Store app-owned user state in database
   - Persist lightweight chapter cache and fall back to stale cache when live parsing fails
 - Database schema (initial) for:
-  - `User`
-  - `Bookmark`
-  - `Follow` (library/favorites)
-  - `ReadingHistory`
+  - `Follow` (library/favorites metadata)
   - `Source`
   - Optional lightweight cache tables (`SeriesCache`, `ChapterCache`) if needed for performance
 
@@ -63,7 +58,7 @@ Out of scope for now:
 ### Source integration roadmap
 
 - **Done:** Asura live adapter.
-- **Next:** Optional admin invite flow, follow management UI, and bookmarks polish.
+- **Next:** Optional admin invite flow and follow management UI polish.
 - **Extensibility:** New translator groups are added by creating a `Source` row + a new adapter class + one registry entry; see `lib/sources/README.md`.
 
 ## Possible Future Implementation
@@ -90,10 +85,7 @@ npm install
 
 ```env
 DATABASE_URL="your_neon_postgresql_connection_string"
-AUTH_SECRET="at-least-32-characters-random-string-for-session-signing"
 ```
-
-Use a long random value for `AUTH_SECRET` (required for log in and registration). After `npm run seed`, you can sign in as `dev@manhwa.local` with password `dev-password-change-me` (change both in production).
 
 3. Generate Prisma client and run migrations:
 
@@ -115,8 +107,6 @@ npm run dev
 1. Push this repo to GitHub and import the project in [Vercel](https://vercel.com); use the default **Next.js** preset (build: `next build`, output: Next.js).
 2. **Environment variables** (Project → Settings → Environment Variables), at minimum for Production (and Preview if you use a real DB there):
    - `DATABASE_URL` — use your **Neon** (or other Postgres) connection string. For serverless, prefer the **pooled** / transaction-pooler URL Neon documents for Vercel.
-   - `AUTH_SECRET` — long random string (same rules as local `.env`).
-   - Optional: `APP_BASE_URL` — canonical site URL (password-reset links); Vercel sets `VERCEL_URL` but explicit base URL avoids proxy/path issues.
    - Optional: `DATABASE_PG_SSL=compat` — only if you hit TLS handshake errors against your host (see Database / TLS notes below).
    - Optional: `SKIP_FOLLOW_TITLE_BACKFILL=1` — disables the automatic follow-title normalization on server startup.
 3. **Database schema:** run migrations against the **same** database Vercel uses, e.g. from your machine: `npx prisma migrate deploy` with `DATABASE_URL` pointing at production (or use Neon’s migration workflow). The Vercel build does **not** run migrations by default.
@@ -127,8 +117,8 @@ npm run dev
 
 - `npm run dev` - start dev server
 - `npm run lint` - run lint checks
-- `npm run test` - unit tests (parsers, auth token helpers, reading-progress validation)
-- `npm run test:integration` - DB integration tests (requires `DATABASE_URL`, e.g. password reset flow)
+- `npm run test` - unit tests (parsers, source helpers, and display utilities)
+- `npm run test:integration` - integration test runner
 - `npm run build` - build for production
 - `npm run backfill:follow-titles` - manual run of `Follow.seriesTitle` HTML-entity normalization (same logic as production startup; requires `DATABASE_URL`)
 - `npx prisma studio` - inspect database records
@@ -136,13 +126,6 @@ npm run dev
 ### Production: follow title backfill
 
 In production (`NODE_ENV=production`), the Node server runs an **idempotent** HTML-entity normalization pass on `Follow.seriesTitle` when the process starts (`instrumentation.ts`). A PostgreSQL **transaction advisory lock** prevents duplicate work if several instances boot at once. Failures are logged and do not crash the app. To disable, set `SKIP_FOLLOW_TITLE_BACKFILL=1` in the host environment. Local `npm run dev` does **not** run this; use `npm run backfill:follow-titles` against your local DB if needed.
-
-### Password reset
-
-- **Forgot:** `/forgot-password` → `POST /api/auth/forgot-password` creates a one-hour token (SHA-256 stored, raw token only in email or **server log** if Resend is not configured).
-- **Complete:** link to `/reset-password?token=…` → `POST /api/auth/reset-password` sets a new bcrypt password and clears tokens for that user.
-- **Email:** set `RESEND_API_KEY` and `RESEND_FROM_EMAIL` in `.env` to send mail; otherwise check server logs for `[password-reset]`.
-- **Links in production:** set `APP_BASE_URL` if the app is behind a proxy so reset URLs are correct.
 
 ## Project Structure
 

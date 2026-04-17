@@ -1,5 +1,4 @@
 import "dotenv/config";
-import { hashPassword } from "../lib/auth/password";
 import { normalizeFollowSeriesTitleForStorage } from "../lib/follow-series-title";
 import { createPostgresAdapter } from "../lib/prisma-adapter";
 import { PrismaClient } from "../lib/generated/prisma/client";
@@ -49,28 +48,13 @@ async function main(): Promise<void> {
       where: { key: "reaper-scans" },
     });
 
-    const devPassword = "dev-password-change-me";
-    const devUser = await prisma.user.upsert({
-      where: { email: "dev@manhwa.local" },
-      update: {
-        displayName: "Dev Reader",
-        passwordHash: hashPassword(devPassword),
-      },
-      create: {
-        email: "dev@manhwa.local",
-        displayName: "Dev Reader",
-        passwordHash: hashPassword(devPassword),
-      },
-    });
-
     const asuraSource = await prisma.source.findUniqueOrThrow({
       where: { key: "asura-scans" },
     });
 
     await prisma.follow.upsert({
       where: {
-        userId_sourceId_seriesSlug: {
-          userId: devUser.id,
+        sourceId_seriesSlug: {
           sourceId: asuraSource.id,
           seriesSlug: "the-beginning-after-the-end",
         },
@@ -80,7 +64,6 @@ async function main(): Promise<void> {
         coverImageUrl: "https://example.com/covers/tbate.jpg",
       },
       create: {
-        userId: devUser.id,
         sourceId: asuraSource.id,
         seriesSlug: "the-beginning-after-the-end",
         seriesTitle: normalizeFollowSeriesTitleForStorage("The Beginning After the End"),
@@ -88,55 +71,6 @@ async function main(): Promise<void> {
       },
     });
 
-    await prisma.bookmark.upsert({
-      where: {
-        userId_sourceId_seriesSlug_chapterSlug: {
-          userId: devUser.id,
-          sourceId: asuraSource.id,
-          seriesSlug: "the-beginning-after-the-end",
-          chapterSlug: "chapter-200",
-        },
-      },
-      update: {
-        chapterTitle: "Chapter 200",
-        pageNumber: 5,
-        chapterUrl: "https://example.com/series/tbate/chapter-200",
-      },
-      create: {
-        userId: devUser.id,
-        sourceId: asuraSource.id,
-        seriesSlug: "the-beginning-after-the-end",
-        chapterSlug: "chapter-200",
-        chapterTitle: "Chapter 200",
-        pageNumber: 5,
-        chapterUrl: "https://example.com/series/tbate/chapter-200",
-      },
-    });
-
-    await prisma.readingHistory.upsert({
-      where: {
-        userId_sourceId_seriesSlug_chapterSlug: {
-          userId: devUser.id,
-          sourceId: asuraSource.id,
-          seriesSlug: "the-beginning-after-the-end",
-          chapterSlug: "chapter-200",
-        },
-      },
-      update: {
-        chapterTitle: "Chapter 200",
-        pageNumber: 5,
-        chapterUrl: "https://example.com/series/tbate/chapter-200",
-      },
-      create: {
-        userId: devUser.id,
-        sourceId: asuraSource.id,
-        seriesSlug: "the-beginning-after-the-end",
-        chapterSlug: "chapter-200",
-        chapterTitle: "Chapter 200",
-        pageNumber: 5,
-        chapterUrl: "https://example.com/series/tbate/chapter-200",
-      },
-    });
   } finally {
     await prisma.$disconnect();
   }

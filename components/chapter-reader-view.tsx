@@ -4,21 +4,26 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type RefObject,
 } from "react";
 import Link from "next/link";
+import { readContinueReadingEntries, upsertContinueReadingEntry } from "@/lib/browser-continue-reading";
 
 /**
- * Identifies the chapter and source for `POST /api/reading-progress` (scroll → `ReadingHistory`).
+ * Identifies the chapter and source for browser-local continue-reading cache updates.
  */
 export type ReadingProgressSync = {
   sourceKey: string;
+  sourceName: string;
   seriesSlug: string;
+  seriesTitle: string | null;
   chapterSlug: string;
   chapterTitle: string;
   chapterUrl: string | null;
+  coverImageUrl: string | null;
 };
 
 /**
@@ -147,7 +152,7 @@ function useDocumentScrollProgress(imageUrlCount: number): number {
 const READING_PROGRESS_DEBOUNCE_MS = 1200;
 
 /**
- * Persists the latest visible image index via debounced `fetch` and `sendBeacon` when the tab hides.
+ * Persists the latest visible image index in browser storage (debounced + on tab hide).
  */
 function usePersistReadingProgress(
   progressSync: ReadingProgressSync | null | undefined,
@@ -177,36 +182,34 @@ function usePersistReadingProgress(
       return;
     }
 
-    const flushBeacon = (): void => {
+    const flushCache = (): void => {
       const sync = syncRef.current;
       const page = pageRef.current;
       if (!sync || page < 1) {
         return;
       }
-      const body = JSON.stringify({
+      upsertContinueReadingEntry({
         sourceKey: sync.sourceKey,
+        sourceName: sync.sourceName,
         seriesSlug: sync.seriesSlug,
+        seriesTitle: sync.seriesTitle,
         chapterSlug: sync.chapterSlug,
         chapterTitle: sync.chapterTitle,
-        chapterUrl: sync.chapterUrl,
+        coverImageUrl: sync.coverImageUrl,
         pageNumber: page,
       });
-      navigator.sendBeacon(
-        "/api/reading-progress",
-        new Blob([body], { type: "application/json" }),
-      );
     };
 
     const onHidden = (): void => {
       if (document.visibilityState === "hidden") {
-        flushBeacon();
+        flushCache();
       }
     };
-    window.addEventListener("pagehide", flushBeacon);
+    window.addEventListener("pagehide", flushCache);
     document.addEventListener("visibilitychange", onHidden);
 
     return () => {
-      window.removeEventListener("pagehide", flushBeacon);
+      window.removeEventListener("pagehide", flushCache);
       document.removeEventListener("visibilitychange", onHidden);
     };
   }, [
@@ -229,27 +232,17 @@ function usePersistReadingProgress(
     }
     debounceRef.current = setTimeout(() => {
       debounceRef.current = null;
-      void (async () => {
-        try {
-          const res = await fetch("/api/reading-progress", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              sourceKey: progressSync.sourceKey,
-              seriesSlug: progressSync.seriesSlug,
-              chapterSlug: progressSync.chapterSlug,
-              chapterTitle: progressSync.chapterTitle,
-              chapterUrl: progressSync.chapterUrl,
-              pageNumber: visiblePage,
-            }),
-          });
-          if (res.ok) {
-            lastSentRef.current = visiblePage;
-          }
-        } catch {
-          /* ignore network errors */
-        }
-      })();
+      upsertContinueReadingEntry({
+        sourceKey: progressSync.sourceKey,
+        sourceName: progressSync.sourceName,
+        seriesSlug: progressSync.seriesSlug,
+        seriesTitle: progressSync.seriesTitle,
+        chapterSlug: progressSync.chapterSlug,
+        chapterTitle: progressSync.chapterTitle,
+        coverImageUrl: progressSync.coverImageUrl,
+        pageNumber: visiblePage,
+      });
+      lastSentRef.current = visiblePage;
     }, READING_PROGRESS_DEBOUNCE_MS);
 
     return () => {
@@ -277,8 +270,19 @@ export function ChapterReaderView({
   nextChapterHref = null,
 }: ChapterReaderViewProps) {
   const pagesRef = useRef<HTMLElement>(null);
+  const effectiveInitialPage = useMemo(() => {
+    if (typeof window === "undefined" || !progressSync) {
+      return initialPage;
+    }
+    const key = `${progressSync.sourceKey}:${progressSync.seriesSlug}`;
+    const saved = readContinueReadingEntries().find(
+      (row) => `${row.sourceKey}:${row.seriesSlug}` === key && row.chapterSlug === progressSync.chapterSlug,
+    );
+    return saved?.pageNumber && saved.pageNumber > 0 ? saved.pageNumber : initialPage;
+  }, [initialPage, progressSync]);
+
   const clampedInitial = Math.min(
-    Math.max(initialPage, 1),
+    Math.max(effectiveInitialPage, 1),
     Math.max(imageUrls.length, 1),
   );
   const visiblePage = useVisiblePageIndex(

@@ -42,32 +42,42 @@ async function main(): Promise<void> {
     }
 
     /**
-     * Drops legacy sources no longer supported by the app.
+     * Drops legacy sources no longer supported by the app (cascade removes follows/cache rows).
      */
     await prisma.source.deleteMany({
-      where: { key: "reaper-scans" },
+      where: { key: { in: ["reaper-scans", "flame-scans"] } },
     });
 
     const asuraSource = await prisma.source.findUniqueOrThrow({
       where: { key: "asura-scans" },
     });
 
+    /** Remove curated-only / delisted slug so browse and search stay scrape-aligned. */
+    await prisma.follow.deleteMany({
+      where: { seriesSlug: "the-beginning-after-the-end" },
+    });
+    await prisma.seriesCache.deleteMany({
+      where: { seriesSlug: "the-beginning-after-the-end" },
+    });
+
     await prisma.follow.upsert({
       where: {
         sourceId_seriesSlug: {
           sourceId: asuraSource.id,
-          seriesSlug: "the-beginning-after-the-end",
+          seriesSlug: "solo-leveling",
         },
       },
       update: {
-        seriesTitle: normalizeFollowSeriesTitleForStorage("The Beginning After the End"),
-        coverImageUrl: "https://example.com/covers/tbate.jpg",
+        seriesTitle: normalizeFollowSeriesTitleForStorage("Solo Leveling"),
+        coverImageUrl:
+          "https://cdn.asurascans.com/asura-images/covers/solo-leveling.c27830.webp",
       },
       create: {
         sourceId: asuraSource.id,
-        seriesSlug: "the-beginning-after-the-end",
-        seriesTitle: normalizeFollowSeriesTitleForStorage("The Beginning After the End"),
-        coverImageUrl: "https://example.com/covers/tbate.jpg",
+        seriesSlug: "solo-leveling",
+        seriesTitle: normalizeFollowSeriesTitleForStorage("Solo Leveling"),
+        coverImageUrl:
+          "https://cdn.asurascans.com/asura-images/covers/solo-leveling.c27830.webp",
       },
     });
 

@@ -19,6 +19,8 @@ export default defineConfig({
   schema: "prisma/schema.prisma",
   migrations: {
     path: "prisma/migrations",
+    /** Matches `package.json` `prisma.seed` so `npx prisma db seed` runs the same script as `npm run seed`. */
+    seed: "tsx prisma/seed.ts",
   },
   datasource: {
     url: getDatasourceUrl(),

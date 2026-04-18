@@ -10,6 +10,26 @@ This file tracks implementation steps so future developers can understand what w
 
 ## Timeline
 
+### 2026-04-18 - Remove TBATE curated row + Flame DB residue; harden search
+
+**Objective**
+- Stop showing “The Beginning After the End” in browse/search (not on Asura); remove leftover Flame Comics source data from seed path; ensure search never returns unsupported source keys.
+
+**Changes made**
+- `lib/featured-series.ts`: removed `asura-tbate` from `CATALOG_HIGHLIGHTS`.
+- `prisma/seed.ts`: delete `flame-scans` and `reaper-scans` sources; delete `Follow`/`SeriesCache` rows for `the-beginning-after-the-end`; dev sample follow is `solo-leveling` instead of TBATE.
+- `app/api/search/route.ts`: filter merged results with `isSupportedSourceKey`.
+
+**Verification**
+- `npm run lint`
+- `npm run build`
+- Re-run `npx prisma db seed` (or deploy migration hygiene) on environments that still had `flame-scans` or TBATE cache rows.
+
+**Next**
+- None.
+
+---
+
 ### 2026-04-18 - Header search visible on mobile
 
 **Objective**

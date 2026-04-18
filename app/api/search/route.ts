@@ -3,7 +3,7 @@ import { isBrowseSourceKey } from "@/lib/browse-constants";
 import { buildLiveBrowseCatalogForSource, stripAsuraHashSuffix } from "@/lib/live-source-browse";
 import { prisma } from "@/lib/prisma";
 import { CATALOG_HIGHLIGHTS } from "@/lib/featured-series";
-import { SUPPORTED_SOURCE_KEYS } from "@/lib/supported-sources";
+import { isSupportedSourceKey, SUPPORTED_SOURCE_KEYS } from "@/lib/supported-sources";
 
 /**
  * One row returned to the header search client.
@@ -54,6 +54,7 @@ function upsertMergedSearchResult(merged: Map<string, SearchResult>, row: Search
 
 /**
  * Returns merged DB cache, static highlights, and live browse catalog matches for the header search (title or slug substring).
+ * Final rows are limited to `SUPPORTED_SOURCE_KEYS` so disabled sources never surface from legacy DB data.
  */
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -137,7 +138,10 @@ export async function GET(request: Request) {
 
     // Return merged results directly — DB and static entries already carry cover URLs;
     // live og:image resolution was removed to eliminate 10+ outbound HTTP requests per search.
-    const results = Array.from(merged.values()).slice(0, 10);
+    // Drop any legacy source keys (e.g. removed scan sites) if rows still exist in older databases.
+    const results = Array.from(merged.values())
+      .filter((r) => isSupportedSourceKey(r.sourceKey))
+      .slice(0, 10);
     return NextResponse.json(results);
   } catch (error) {
     console.error("Search API Error:", error);

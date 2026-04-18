@@ -29,18 +29,6 @@ export type CatalogHighlight = {
 export const CATALOG_HIGHLIGHTS: CatalogHighlight[] = [
   // Asura Scans
   {
-    id: "asura-tbate",
-    seriesSlug: "the-beginning-after-the-end",
-    title: "The Beginning After the End",
-    // Asura no longer hosts this series; og:image enrichment returns null. Webtoon CDN cover for browse tiles only.
-    coverImageUrl:
-      "https://swebtoon-phinf.pstatic.net/20190904_91/15675594449646Uar9_PNG/M_details_720x1230.png?type=crop540_540",
-    sourceName: "Asura Scans",
-    sourceKey: "asura-scans",
-    genres: ["Action", "Fantasy", "Shounen"],
-    subtitle: "Fantasy · reincarnation",
-  },
-  {
     id: "asura-sl",
     seriesSlug: "solo-leveling",
     title: "Solo Leveling",

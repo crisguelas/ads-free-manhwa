@@ -35,7 +35,7 @@ export function SiteHeader() {
           </Link>
         </nav>
 
-        <div className="ml-auto flex flex-1 items-center justify-end gap-2 sm:flex-initial md:flex-1 lg:max-w-md">
+        <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-2 sm:flex-initial md:flex-1 lg:max-w-md">
           <SiteHeaderSearchShell />
         </div>
       </div>

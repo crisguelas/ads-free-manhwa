@@ -10,6 +10,24 @@ This file tracks implementation steps so future developers can understand what w
 
 ## Timeline
 
+### 2026-04-18 - Header search visible on mobile
+
+**Objective**
+- Restore the catalog search field on small viewports; it was hidden with `hidden md:flex` so phones saw no search in the top bar.
+
+**Changes made**
+- `components/browse-header-search.tsx`: always `flex` the search shell; add `min-w-0 w-full` so the input can shrink inside the header flex row without clipping issues.
+- `components/site-header.tsx`: `min-w-0` on the search wrapper so nested flex children respect overflow.
+
+**Verification**
+- `npm run lint`
+- `npm run build`
+
+**Next**
+- None unless mobile header layout needs a second-row full-width search for very narrow widths.
+
+---
+
 ### 2026-04-17 - Search: dedupe Asura hashed slugs + solid dropdown panel
 
 **Objective**

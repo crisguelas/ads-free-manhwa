@@ -36,6 +36,7 @@ function isPointerEventInsideContainer(event: PointerEvent, root: HTMLElement | 
 
 /**
  * Header search field: real-time dropdown of series results as the user types.
+ * Visible at all breakpoints so mobile users can search without a desktop-only affordance.
  */
 export function BrowseHeaderSearch() {
   const [query, setQuery] = useState("");
@@ -122,7 +123,7 @@ export function BrowseHeaderSearch() {
   }, [query]);
 
   return (
-    <div ref={containerRef} className="relative hidden flex-1 max-w-sm md:flex">
+    <div ref={containerRef} className="relative flex min-w-0 w-full max-w-sm flex-1">
       <label className="relative flex-1">
         <span className="sr-only">Search or jump to catalog</span>
         <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400">
